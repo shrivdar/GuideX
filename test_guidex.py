@@ -1,6 +1,6 @@
 from guidex.genome_fetcher import GenomeFetcher
 from guidex.conservation import ConservationAnalyzer
-from guidex.grna_designer import GuideXGrnaDesigner
+from guidex.grna_designer import GuideXGrnaDesigner  # Note lowercase
 
 # Fetch genomes (example: Influenza A virus)
 fetcher = GenomeFetcher(email="darsh.shri123@gmail.com")  # Use your NCBI email!
