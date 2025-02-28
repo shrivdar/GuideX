@@ -1,0 +1,11 @@
+LwaCas13a:
+  spacer_length: 28
+  gc_min: 0.4
+  gc_max: 0.6
+  mfe_threshold: -3.0  # Reject spacers with MFE > -3 kcal/mol
+
+PspCas13b:
+  spacer_length: 30
+  gc_min: 0.35
+  gc_max: 0.65
+  mfe_threshold: -2.5
