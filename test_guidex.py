@@ -13,10 +13,20 @@ def main():
         raw_genomes = fetcher.fetch_ncbi("Influenza A virus[Organism]", limit=5)
         
         # Convert to proper SeqRecords
-        genomes = [
-            SeqRecord(Seq(str(g.seq)), id=g.id, description="")
-            for g in raw_genomes
-        ]
+        genomes = []
+        for g in raw_genomes:
+            try:
+                seq = Seq(str(g.seq).upper())  # Force uppercase
+                seq = seq.ungap()  # Remove gaps
+                if len(seq) < 100:  # Minimum length check
+                    continue
+                genomes.append(SeqRecord(seq, id=g.id, description=""))
+            except Exception as e:
+                print(f"⚠️ Invalid genome {g.id}: {str(e)}")
+                continue
+
+        if len(genomes) < 2:
+            raise ValueError("Need at least 2 valid genomes for alignment")
         
         if not genomes:
             raise ValueError("No genomes found! Check your search term.")
