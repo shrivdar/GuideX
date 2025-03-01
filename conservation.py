@@ -19,38 +19,54 @@ class ConservationAnalyzer:
         self.window_size = window_size
 
     def align_genomes(self, genomes, output_dir="alignments"):
-        """Fixed MAFFT implementation"""
-        # Create directory if needed
+        """Fixed MAFFT implementation with strict input validation"""
+        # Convert Path objects to strings
+        output_dir = str(output_dir)
         os.makedirs(output_dir, exist_ok=True)
 
-        # Write combined input file
-        input_path = os.path.join(output_dir, "combined_input.fasta")
+        # Ensure we have SeqRecords with Seq objects
+        valid_genomes = []
+        for g in genomes:
+            if not isinstance(g.seq, Seq):
+                g.seq = Seq(str(g.seq))
+            valid_genomes.append(g)
+    
+        # Write combined input (REPLACE existing files)
+        input_path = os.path.join(output_dir, "MAFFT_IN.fasta")
         with open(input_path, "w") as f:
-            for genome in genomes:
-                if not isinstance(genome.seq, Seq):  # Prevent deprecation
-                    genome.seq = Seq(str(genome.seq))
-                SeqIO.write(genome, f, "fasta")
+            SeqIO.write(valid_genomes, f, "fasta")
 
-        # Run MAFFT safely
-        output_path = os.path.join(output_dir, "aligned.fasta")
+        # Verify input file contains sequences
+        if os.path.getsize(input_path) == 0:
+            raise ValueError("Empty MAFFT input file - check genome data")
+
+        # Run MAFFT with strict error checking
+        output_path = os.path.join(output_dir, "MAFFT_OUT.fasta")
         cmd = [
             "mafft",
             "--auto",
             "--thread", "1",
+            "--quiet",  # Suppress help text
             input_path
         ]
         
-        with open(output_path, "w") as outfile:
-            result = subprocess.run(
-                cmd, 
-                stdout=outfile, 
-                stderr=subprocess.PIPE,
-                text=True
-            )
-            
-        if result.returncode != 0:
-            raise RuntimeError(f"MAFFT failed: {result.stderr}")
-            
+        try:
+            with open(output_path, "w") as outfile:
+                result = subprocess.run(
+                    cmd,
+                    stdout=outfile,
+                    stderr=subprocess.PIPE,
+                    text=True,
+                    check=True  # Raise error on non-zero exit
+                )
+        except subprocess.CalledProcessError as e:
+            error_msg = f"""
+            MAFFT failed with code {e.returncode}
+            Command: {' '.join(cmd)}
+            Error output: {e.stderr}
+            """
+            raise RuntimeError(error_msg) from None
+    
         return output_path
     
     def calculate_jsd(self, aligned_file: Path) -> List[float]:
