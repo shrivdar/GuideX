@@ -1,8 +1,10 @@
+import os
+import subprocess
 import numpy as np
 from pathlib import Path
 from typing import List
-from Bio.Align import MultipleSeqAlignment, PairwiseAligner
-from Bio.SeqRecord import SeqRecord
+from Bio import SeqIO  # Added import
+from Bio.Seq import Seq
 from skbio import DNA, TabularMSA
 from scipy.spatial.distance import jensenshannon
 import plotly.express as px
@@ -11,35 +13,45 @@ from .utils.logger import setup_logger
 logger = setup_logger(__name__)
 
 class ConservationAnalyzer:
-    """Conservation analysis with pure Python alignment (NO MAFFT)."""
+    """Conservation analysis with MAFFT integration"""
     
     def __init__(self, window_size: int = 30):
         self.window_size = window_size
-        self.aligner = PairwiseAligner()
-        self.aligner.mode = 'global'
-        self.aligner.match_score = 2
-        self.aligner.mismatch_score = -1
-        self.aligner.open_gap_score = -0.5
-        self.aligner.extend_gap_score = -0.1
 
-    def align_genomes(self, genomes):
-        # Create alignments directory if needed
-        os.makedirs("alignments", exist_ok=True)
+    def align_genomes(self, genomes, output_dir="alignments"):
+        """Fixed MAFFT implementation"""
+        # Create directory if needed
+        os.makedirs(output_dir, exist_ok=True)
 
-        # Write ALL genomes to a SINGLE input file
-        input_path = "alignments/combined_input.fasta"
+        # Write combined input file
+        input_path = os.path.join(output_dir, "combined_input.fasta")
         with open(input_path, "w") as f:
             for genome in genomes:
+                if not isinstance(genome.seq, Seq):  # Prevent deprecation
+                    genome.seq = Seq(str(genome.seq))
                 SeqIO.write(genome, f, "fasta")
 
-        # Run MAFFT with single input file
-        cmd = (
-            f"mafft --thread 1 --auto {input_path} "
-            f"> alignments/aligned.fasta"
-        )
-        subprocess.run(cmd, shell=True, check=True)
-    
-        return "alignments/aligned.fasta"
+        # Run MAFFT safely
+        output_path = os.path.join(output_dir, "aligned.fasta")
+        cmd = [
+            "mafft",
+            "--auto",
+            "--thread", "1",
+            input_path
+        ]
+        
+        with open(output_path, "w") as outfile:
+            result = subprocess.run(
+                cmd, 
+                stdout=outfile, 
+                stderr=subprocess.PIPE,
+                text=True
+            )
+            
+        if result.returncode != 0:
+            raise RuntimeError(f"MAFFT failed: {result.stderr}")
+            
+        return output_path
     
     def calculate_jsd(self, aligned_file: Path) -> List[float]:
         """Calculate conservation scores using Jensen-Shannon divergence."""
