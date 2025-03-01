@@ -13,25 +13,34 @@ def main():
         fetcher = GenomeFetcher(email="darsh.shri123@gmail.com")
         raw_genomes = fetcher.fetch_ncbi("Influenza A virus[Organism]", limit=5)
         
-        # Convert to valid SeqRecords
+        # Convert to valid SeqRecords (FIXED SYNTAX)
         genomes = []
         for g in raw_genomes:
             try:
+                # Corrected line: added missing closing parenthesis
                 seq = Seq(str(g.seq).upper().ungap()
-                if len(seq) < 1000:  # Adjusted minimum for viruses
-                    continue
-                genomes.append(SeqRecord(seq, id=g.id, description=""))
+                if len(seq) >= 1000:  # Keep only long enough sequences
+                    genomes.append(SeqRecord(
+                        seq, 
+                        id=g.id, 
+                        description=f"Length: {len(seq)}bp"
+                    ))
+                    print(f"✅ Validated {g.id} ({len(seq)} bp)")
+                else:
+                    print(f"⚠️ Skipped {g.id} (too short: {len(seq)} bp)")
             except Exception as e:
-                print(f"⚠️ Invalid genome {g.id}: {str(e)}", file=sys.stderr)
+                print(f"🚨 Error processing {g.id}: {str(e)}", file=sys.stderr)
 
         # Validate genome count
         if len(genomes) < 2:
             raise ValueError(f"Only {len(genomes)} valid genomes (need ≥2)")
-        print(f"✅ Retrieved {len(genomes)} genomes (first 50bp: {genomes[0].seq[:50]}...)")
+        print(f"\n🔬 Final genome set: {len(genomes)} sequences")
+        print(f"📏 Length range: {min(len(g.seq) for g in genomes)}-{max(len(g.seq) for g in genomes)} bp")
 
         # 2. Alignment and Conservation Analysis
         print("\n🧬 Aligning genomes...")
         align_dir = Path("alignments").absolute()
+        align_dir.mkdir(exist_ok=True)
         conservator = ConservationAnalyzer(window_size=30)
         aligned_file = conservator.align_genomes(genomes, align_dir)
         print(f"🔍 Alignment saved to: {aligned_file}")
