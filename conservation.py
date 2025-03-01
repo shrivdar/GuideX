@@ -17,16 +17,21 @@ class ConservationAnalyzer:
         self.window_size = window_size
 
     def align_genomes(self, genomes: List, output_dir: Path = Path("alignments")) -> Path:
+        """Run MAFFT with corrected file handling."""
         output_dir.mkdir(exist_ok=True)
         fasta_paths = [self._save_temp(genome, output_dir) for genome in genomes]
-        
+    
+        # Convert Path objects to strings and join into a single input argument
+        input_files = " ".join(f'"{str(fp)}"' for fp in fasta_paths)
+
         avg_length = np.mean([len(g.seq) for g in genomes])
         threads = 4 if avg_length > 1e5 else 1
-        
+
         cmd = (
-            f"mafft --thread {threads} --auto {' '.join(map(str, fasta_paths))} "
-            f"> {output_dir}/aligned.fasta"
+            f"mafft --thread {threads} --auto {input_files} "  # No ">" here
+            f"-o {output_dir}/aligned.fasta"  # Use MAFFT's native output flag
         )
+
         subprocess.run(cmd, shell=True, check=True)
         return output_dir / "aligned.fasta"
 
