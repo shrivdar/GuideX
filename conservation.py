@@ -1,7 +1,6 @@
 import subprocess
 import numpy as np
 from skbio import DNA, TabularMSA
-from skbio.diversity.alpha import jsd
 import plotly.express as px
 from pathlib import Path
 from typing import List
@@ -55,3 +54,18 @@ class ConservationAnalyzer:
             title="GuideX Conservation Analysis"
         )
         fig.write_html(output_file)
+
+class ConservationAnalyzer:
+    def _jsd_score(self, window):
+        """Jensen-Shannon divergence across sequences."""
+        freq_matrix = []
+        for seq in window:
+            freq = [seq.frequencies().get(nt, 0) for nt in 'ACGT']
+            freq_matrix.append(freq)
+        
+        # Compute JSD using SciPy (returns sqrt(JSD), so square it
+        return np.mean([
+            jensenshannon(freq_matrix[0], freq) ** 2  # Squared to get true JSD
+            for freq in freq_matrix[1:]
+        ])
+
