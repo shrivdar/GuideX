@@ -1,3 +1,7 @@
+class GenomeFetchError(Exception):
+    """Raised when genome fetching fails."""
+    pass
+
 class GrnaDesignError(Exception):
-    """Custom exception for gRNA design failures."""
+    """Raised when gRNA design fails."""
     pass
