@@ -17,32 +17,47 @@ class ConservationAnalyzer:
         self.window_size = window_size
 
     def align_genomes(self, genomes: List, output_dir: Path = Path("alignments")) -> Path:
-        """Run MAFFT with proper argument formatting."""
+        """Robust genome alignment with MAFFT."""
         output_dir.mkdir(exist_ok=True)
-        fasta_paths = [self._save_temp(genome, output_dir) for genome in genomes]
+    
+        # 1. Save genomes with sanitized IDs
+        fasta_paths = []
+        for idx, genome in enumerate(genomes):
+            safe_id = genome.id.replace(" ", "_").replace(".", "_")  # Sanitize ID
+            path = output_dir / f"genome_{idx}_{safe_id}.fasta"
+            with open(path, "w") as f:
+                f.write(f">{safe_id}\n{str(genome.seq)}")
+            fasta_paths.append(path)
 
-        # Validate input files
+        # 2. Validate input files
         for fp in fasta_paths:
             if not fp.exists() or fp.stat().st_size == 0:
-                raise FileNotFoundError(f"Invalid input file: {fp}")
+            raise FileNotFoundError(f"Invalid FASTA file: {fp}")
 
-        # Construct MAFFT command
+        # 3. Build MAFFT command
+        output_path = output_dir / "aligned.fasta"
         cmd = [
             "mafft",
             "--auto",
-            "--quiet",  # Suppress help text
-            "--thread", "1" if len(genomes) < 5 else "4",
-            "--out", str(output_dir / "aligned.fasta")
+            "--quiet",
+            "--thread", str(min(4, len(genomes))),  # Max 4 threads
+            "--out", str(output_path)
         ] + [str(fp) for fp in fasta_paths]
-    
-        # Execute without shell=True
-        try:
-            subprocess.run(cmd, check=True, capture_output=True, text=True)
-        except subprocess.CalledProcessError as e:
-            print(f"MAFFT failed with error:\n{e.stderr}")
-            raise
 
-        return output_dir / "aligned.fasta"
+        # 4. Run with proper error handling
+        try:
+            result = subprocess.run(
+                cmd,
+                check=True,
+                capture_output=True,
+                text=True,
+                encoding="utf-8"
+            )
+        except subprocess.CalledProcessError as e:
+            error_msg = f"MAFFT failed: {e.stderr}" if e.stderr else "Check input files"
+            raise RuntimeError(f"Alignment failed ❌\n{error_msg}") from None
+
+        return output_path
 
     def calculate_jsd(self, aligned_file: Path) -> List[float]:
         msa = TabularMSA.read(aligned_file, constructor=DNA)
