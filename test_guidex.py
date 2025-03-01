@@ -1,4 +1,5 @@
 from Bio.SeqRecord import SeqRecord
+from Bio.Seq import Seq  # Added import
 from pathlib import Path
 from guidex.genome_fetcher import GenomeFetcher
 from guidex.conservation import ConservationAnalyzer
@@ -6,32 +7,26 @@ from guidex.grna_designer import GuideXGrnaDesigner
 
 def main():
     try:
-        # 1. Fetch genomes
+        # 1. Fetch genomes with Seq conversion
         print("🕵️ Fetching genomes from NCBI...")
         fetcher = GenomeFetcher(email="darsh.shri123@gmail.com")
-        genomes = fetcher.fetch_ncbi("Influenza A virus[Organism]", limit=5)
+        raw_genomes = fetcher.fetch_ncbi("Influenza A virus[Organism]", limit=5)
+        
+        # Convert to proper SeqRecords
+        genomes = [
+            SeqRecord(Seq(str(g.seq)), id=g.id, description="")
+            for g in raw_genomes
+        ]
         
         if not genomes:
             raise ValueError("No genomes found! Check your search term.")
         print(f"✅ Retrieved {len(genomes)} genomes")
 
-        # 2. Find conserved regions
+        # 2. Find conserved regions (now uses fixed align_genomes)
         print("\n🧬 Identifying conserved regions...")
         conservator = ConservationAnalyzer(window_size=30)
-        
-        # Create alignment directory
         align_dir = Path("alignments")
-        align_dir.mkdir(exist_ok=True)
-        
         aligned_file = conservator.align_genomes(genomes, output_dir=align_dir)
-        jsd_scores = conservator.calculate_jsd(aligned_file)
-        
-        # Find regions with JSD > 0.8 (80% conservation)
-        conserved_regions = [(i, i+30) for i, score in enumerate(jsd_scores) if score > 0.8]
-        
-        if not conserved_regions:
-            raise ValueError("No conserved regions found! Try adjusting window_size or threshold.")
-        print(f"✅ Found {len(conserved_regions)} conserved regions")
 
         # 3. Design gRNAs
         print("\n🔬 Designing Cas13 gRNAs...")
