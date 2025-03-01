@@ -1,8 +1,8 @@
 import subprocess
-import os
 import numpy as np
 from pathlib import Path
 from typing import List
+from Bio.Align.Applications import MafftCommandline
 from skbio import DNA, TabularMSA
 from scipy.spatial.distance import jensenshannon
 import plotly.express as px
@@ -12,82 +12,63 @@ from .utils.logger import setup_logger
 logger = setup_logger(__name__)
 
 class ConservationAnalyzer:
-    """Identify conserved regions using Jensen-Shannon divergence."""
+    """Robust conservation analysis using MAFFT alignment."""
     
-    def __init__(self, algorithm: str = "mafft", window_size: int = 30):
-        self.algorithm = algorithm
+    def __init__(self, window_size: int = 30):
         self.window_size = window_size
 
     def align_genomes(self, genomes: List[SeqRecord], output_dir: Path = Path("alignments")) -> Path:
-        """Robust MAFFT alignment with comprehensive error handling."""
+        """Alignment using Biopython's MAFFT wrapper."""
         output_dir.mkdir(exist_ok=True, parents=True)
         
-        # 1. Generate clean input files with sanitized names
-        input_files = []
-        for idx, genome in enumerate(genomes):
-            # Sanitize filename and sequence
-            clean_id = genome.id.replace(" ", "_").replace(".", "_").replace("/", "-")[:30]
-            clean_seq = str(genome.seq).replace(" ", "").upper()
-            
-            if not clean_seq:
-                raise ValueError(f"Empty sequence for genome {clean_id}")
-            
-            # Create input file
-            input_path = output_dir / f"input_{idx}_{clean_id}.fasta"
-            with open(input_path, "w") as f:
-                f.write(f">{clean_id}\n{clean_seq}")
-            input_files.append(input_path.resolve())
+        # Create input file with all sequences
+        input_file = output_dir / "input.fasta"
+        with open(input_file, "w") as f:
+            for genome in genomes:
+                clean_id = genome.id.replace(" ", "_").replace(".", "_")[:30]
+                f.write(f">{clean_id}\n{str(genome.seq).upper()}\n")
 
-        # 2. Build MAFFT command with absolute paths
-        output_path = (output_dir / "aligned.fasta").resolve()
-        cmd = [
-            "mafft",
-            "--auto",
-            "--quiet",
-            "--thread", "1",  # Single thread for stability
-            "--out", str(output_path)
-        ] + [str(fp) for fp in input_files]
+        # Use Biopython's MAFFT interface
+        output_file = output_dir / "aligned.fasta"
+        mafft_cline = MafftCommandline(
+            input=str(input_file.resolve()),
+            auto=True,
+            thread=1  # Force single thread for stability
+        )
 
-        # 3. Execute with detailed error handling
+        # Execute with error handling
         try:
-            result = subprocess.run(
-                cmd,
-                check=True,
-                stdout=subprocess.PIPE,
-                stderr=subprocess.PIPE,
-                text=True
-            )
-            return output_path
+            stdout, stderr = mafft_cline()
+            with open(output_file, "w") as f:
+                f.write(stdout)
+            return output_file
             
-        except subprocess.CalledProcessError as e:
-            error_msg = f"""
-            MAFFT alignment failed!
-            Command: {' '.join(cmd)}
-            Error Output:
-            {e.stderr}
-            Input Files: {[str(fp) for fp in input_files]}
-            """
-            raise RuntimeError(error_msg) from None
+        except Exception as e:
+            logger.error(f"MAFFT alignment failed: {str(e)}")
+            raise RuntimeError(f"Alignment failed. MAFFT error: {stderr}") from None
 
     def calculate_jsd(self, aligned_file: Path) -> List[float]:
-        """Calculate Jensen-Shannon divergence scores."""
+        """Jensen-Shannon divergence calculation."""
         msa = TabularMSA.read(aligned_file, constructor=DNA)
+        return self._sliding_jsd(msa)
+
+    def _sliding_jsd(self, msa):
+        """Calculate JSD scores across the alignment."""
         scores = []
         for i in range(0, len(msa[0]), self.window_size):
             window = msa[:, i:i+self.window_size]
-            window_score = self._jsd_score(window)
-            scores.extend([window_score] * self.window_size)
+            scores.extend([self._window_jsd(window)] * self.window_size)
         return scores
 
-    def _jsd_score(self, window):
-        """Calculate Jensen-Shannon divergence for a window."""
+    def _window_jsd(self, window):
+        """Calculate JSD for a single window."""
         freq_matrix = []
         for seq in window:
             freq = [seq.frequencies().get(nt, 0) for nt in 'ACGT']
             freq_matrix.append(freq)
         
         return np.mean([
-            jensenshannon(freq_matrix[0], freq) ** 2
+            jensenshannon(freq_matrix[0], freq) ** 2 
             for freq in freq_matrix[1:]
         ])
 
@@ -95,8 +76,8 @@ class ConservationAnalyzer:
         """Generate interactive conservation plot."""
         fig = px.line(
             x=list(range(len(scores))), 
-            y=scores, 
-            labels={"x": "Genome Position", "y": "Conservation Score"},
-            title="GuideX Conservation Analysis"
+            y=scores,
+            labels={"x": "Position", "y": "Conservation Score"},
+            title="Conservation Analysis"
         )
-        fig.write_html(output_file)
+        fig.write_html(str(output_file))
