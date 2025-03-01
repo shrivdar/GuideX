@@ -17,17 +17,18 @@ class ConservationAnalyzer:
         self.window_size = window_size
 
     def align_genomes(self, genomes: List[SeqRecord], output_dir: Path = Path("alignments")) -> Path:
-        """Safe MAFFT alignment using Biopython's interface."""
+        """MAFFT alignment using Biopython's interface (single input file)."""
         output_dir.mkdir(exist_ok=True, parents=True)
         
-        # 1. Create single input file with all sequences
+        # 1. Create single input file for all sequences
         input_file = output_dir / "input.fasta"
         with open(input_file, "w") as f:
             for genome in genomes:
                 clean_id = genome.id.replace("|", "_").replace(" ", "_")[:30]
-                f.write(f">{clean_id}\n{str(genome.seq).upper()}\n")
+                clean_seq = str(genome.seq).upper()
+                f.write(f">{clean_id}\n{clean_seq}\n")
 
-        # 2. Configure MAFFT command using Biopython
+        # 2. Configure MAFFT command
         mafft_cline = MafftCommandline(
             input=str(input_file.resolve()),
             auto=True,
@@ -35,7 +36,7 @@ class ConservationAnalyzer:
             quiet=True
         )
         
-        # 3. Execute and handle output
+        # 3. Execute and save output
         output_file = output_dir / "aligned.fasta"
         try:
             stdout, stderr = mafft_cline()
@@ -46,5 +47,29 @@ class ConservationAnalyzer:
             logger.error(f"MAFFT failed: {stderr}")
             raise RuntimeError(f"Alignment error: {e}") from None
 
-    # Keep existing calculate_jsd, _window_jsd, plot_conservation methods
-    # ... (unchanged from previous implementation)
+    def calculate_jsd(self, aligned_file: Path) -> List[float]:
+        """Calculate Jensen-Shannon divergence scores."""
+        msa = TabularMSA.read(aligned_file, constructor=DNA)
+        scores = []
+        for i in range(0, len(msa[0]), self.window_size):
+            window = msa[:, i:i+self.window_size]
+            scores.extend([self._window_jsd(window)] * self.window_size)
+        return scores
+
+    def _window_jsd(self, window):
+        """Calculate JSD for a single window."""
+        freq_matrix = []
+        for seq in window:
+            freq = [seq.frequencies().get(nt, 0) for nt in 'ACGT']
+            freq_matrix.append(freq)
+        return np.mean([jensenshannon(freq_matrix[0], freq) ** 2 for freq in freq_matrix[1:]])
+
+    def plot_conservation(self, scores: List[float], output_file: Path) -> None:
+        """Generate conservation plot."""
+        fig = px.line(
+            x=list(range(len(scores))), 
+            y=scores,
+            labels={"x": "Position", "y": "Conservation Score"},
+            title="Conservation Analysis"
+        )
+        fig.write_html(str(output_file))
