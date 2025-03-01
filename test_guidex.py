@@ -18,7 +18,7 @@ def main():
         for g in raw_genomes:
             try:
                 # Corrected line: added missing closing parenthesis
-                seq = Seq(str(g.seq).upper().ungap()
+                seq = Seq(str(g.seq).upper().ungap())
                 if len(seq) >= 1000:  # Keep only long enough sequences
                     genomes.append(SeqRecord(
                         seq, 
