@@ -17,37 +17,28 @@ class ConservationAnalyzer:
         self.window_size = window_size
 
     def align_genomes(self, genomes: List, output_dir: Path = Path("alignments")) -> Path:
-        """Run MAFFT with proper file handling."""
+        """Run MAFFT with corrected input/output handling."""
         output_dir.mkdir(exist_ok=True)
         fasta_paths = [self._save_temp(genome, output_dir) for genome in genomes]
 
-        # Validate files exist
+        # Check input files exist
         for fp in fasta_paths:
             if not fp.exists():
-                raise FileNotFoundError(f"Input file {fp} not found!")
+                raise FileNotFoundError(f"Input file {fp} missing!")
 
-        # Format MAFFT command using input list and -o for output
+        # Build MAFFT command as a list
         cmd = [
             "mafft",
             "--auto",
-            "--thread", str(1 if len(genomes) < 5 else 4),  # Auto-thread logic
-            *[str(fp) for fp in fasta_paths]  # List of input files
-        ]
+            "--thread", str(1 if len(genomes) < 5 else 4),  # Dynamic threading
+            "--quiet",  # Suppress help text
+            "--out", str(output_dir / "aligned.fasta")  # Use MAFFT's output flag
+        ] + [str(fp) for fp in fasta_paths]
 
-        # Run MAFFT and write output directly
-        result = subprocess.run(
-            cmd,
-            check=True,
-            capture_output=True,
-            text=True
-        )
-
-        # Save aligned output
-        aligned_path = output_dir / "aligned.fasta"
-        with open(aligned_path, "w") as f:
-            f.write(result.stdout)
-        
-        return aligned_path
+        # Execute without shell=True
+        subprocess.run(cmd, check=True)
+    
+        return output_dir / "aligned.fasta"
 
     def calculate_jsd(self, aligned_file: Path) -> List[float]:
         msa = TabularMSA.read(aligned_file, constructor=DNA)
