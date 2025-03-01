@@ -1,10 +1,12 @@
 import subprocess
+import os
 import numpy as np
-from skbio import DNA, TabularMSA
-from scipy.spatial.distance import jensenshannon  # correct import?
-import plotly.express as px
 from pathlib import Path
 from typing import List
+from skbio import DNA, TabularMSA
+from scipy.spatial.distance import jensenshannon
+import plotly.express as px
+from Bio.SeqRecord import SeqRecord
 from .utils.logger import setup_logger
 
 logger = setup_logger(__name__)
@@ -16,64 +18,59 @@ class ConservationAnalyzer:
         self.algorithm = algorithm
         self.window_size = window_size
 
-    def align_genomes(self, genomes: List, output_dir: Path = Path("alignments")) -> Path:
+    def align_genomes(self, genomes: List[SeqRecord], output_dir: Path = Path("alignments")) -> Path:
         """Robust MAFFT alignment with comprehensive error handling."""
         output_dir.mkdir(exist_ok=True, parents=True)
-    
-        # 1. Generate safe filenames and validate sequences
-        fasta_paths = []
+        
+        # 1. Generate clean input files with sanitized names
+        input_files = []
         for idx, genome in enumerate(genomes):
             # Sanitize filename and sequence
-            clean_id = genome.id.replace(" ", "_").replace(".", "_").replace("/", "-")
+            clean_id = genome.id.replace(" ", "_").replace(".", "_").replace("/", "-")[:30]
             clean_seq = str(genome.seq).replace(" ", "").upper()
-        
+            
             if not clean_seq:
                 raise ValueError(f"Empty sequence for genome {clean_id}")
-                
-            path = output_dir / f"input_{idx}_{clean_id[:30]}.fasta"
-            with open(path, "w") as f:
+            
+            # Create input file
+            input_path = output_dir / f"input_{idx}_{clean_id}.fasta"
+            with open(input_path, "w") as f:
                 f.write(f">{clean_id}\n{clean_seq}")
-            fasta_paths.append(path)
+            input_files.append(input_path.resolve())
 
-        # 2. Verify input files
-        missing_files = [str(fp) for fp in fasta_paths if not fp.exists()]
-        if missing_files:
-            raise FileNotFoundError(f"Missing input files: {', '.join(missing_files)}")
-
-        # 3. Build MAFFT command
-        output_path = output_dir / "aligned.fasta"
+        # 2. Build MAFFT command with absolute paths
+        output_path = (output_dir / "aligned.fasta").resolve()
         cmd = [
             "mafft",
             "--auto",
             "--quiet",
-            "--thread", str(min(os.cpu_count(), 4)),  # Optimal thread count
-            "--out", str(output_path.resolve())  # Absolute path for safety
-        ] + [str(fp.resolve()) for fp in fasta_paths]  # Absolute paths for inputs
+            "--thread", "1",  # Single thread for stability
+            "--out", str(output_path)
+        ] + [str(fp) for fp in input_files]
 
-        # 4. Execute with robust error handling
+        # 3. Execute with detailed error handling
         try:
             result = subprocess.run(
                 cmd,
                 check=True,
                 stdout=subprocess.PIPE,
                 stderr=subprocess.PIPE,
-                text=True,
-                encoding="utf-8",
+                text=True
             )
-            if "error" in result.stderr.lower():
-                raise RuntimeError(f"MAFFT warning: {result.stderr}")
+            return output_path
             
         except subprocess.CalledProcessError as e:
-            error_msg = (
-                f"MAFFT failed with code {e.returncode}\n"
-                f"Command: {' '.join(cmd)}\n"
-                f"Error: {e.stderr}"
-            )
+            error_msg = f"""
+            MAFFT alignment failed!
+            Command: {' '.join(cmd)}
+            Error Output:
+            {e.stderr}
+            Input Files: {[str(fp) for fp in input_files]}
+            """
             raise RuntimeError(error_msg) from None
 
-        return output_path
-    
     def calculate_jsd(self, aligned_file: Path) -> List[float]:
+        """Calculate Jensen-Shannon divergence scores."""
         msa = TabularMSA.read(aligned_file, constructor=DNA)
         scores = []
         for i in range(0, len(msa[0]), self.window_size):
@@ -83,6 +80,7 @@ class ConservationAnalyzer:
         return scores
 
     def _jsd_score(self, window):
+        """Calculate Jensen-Shannon divergence for a window."""
         freq_matrix = []
         for seq in window:
             freq = [seq.frequencies().get(nt, 0) for nt in 'ACGT']
@@ -94,6 +92,7 @@ class ConservationAnalyzer:
         ])
 
     def plot_conservation(self, scores: List[float], output_file: Path) -> None:
+        """Generate interactive conservation plot."""
         fig = px.line(
             x=list(range(len(scores))), 
             y=scores, 
@@ -101,9 +100,3 @@ class ConservationAnalyzer:
             title="GuideX Conservation Analysis"
         )
         fig.write_html(output_file)
-
-    def _save_temp(self, genome, output_dir: Path) -> Path:
-        path = output_dir / f"{genome.id}.fasta"
-        with open(path, "w") as f:
-            f.write(f">{genome.id}\n{genome.seq}")
-        return path
