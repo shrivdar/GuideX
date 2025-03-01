@@ -11,12 +11,12 @@ from .utils.logger import setup_logger
 logger = setup_logger(__name__)
 
 class ConservationAnalyzer:
-    """Conservation analysis with pure Python alignment."""
+    """Conservation analysis with pure Python alignment (NO MAFFT)."""
     
     def __init__(self, window_size: int = 30):
         self.window_size = window_size
         self.aligner = PairwiseAligner()
-        self.aligner.mode = 'global'  # Global alignment strategy
+        self.aligner.mode = 'global'
         self.aligner.match_score = 2
         self.aligner.mismatch_score = -1
         self.aligner.open_gap_score = -0.5
@@ -26,29 +26,28 @@ class ConservationAnalyzer:
         """Align sequences using Biopython's pairwise aligner."""
         output_dir.mkdir(exist_ok=True, parents=True)
         
-        if len(genomes) < 1:
+        if not genomes:
             raise ValueError("No genomes provided for alignment")
 
-        # Convert sequences to strings to avoid deprecation warnings
+        # Convert sequences to uppercase strings
         sequences = [str(g.seq).upper() for g in genomes]
         
         # Create reference-based alignment
-        alignment = MultipleSeqAlignment([])
-        alignment.append(sequences[0])
+        alignment = MultipleSeqAlignment([sequences[0]])
         
-        # Align subsequent sequences to reference
+        # Align subsequent sequences
         for seq in sequences[1:]:
             aligned = self.aligner.align(alignment[0], seq)[0]
             alignment.append(aligned[1])
 
-        # Save aligned sequences
+        # Save alignment
         output_file = output_dir / "aligned.fasta"
         with open(output_file, "w") as f:
             for idx, seq in enumerate(alignment):
                 f.write(f">genome_{idx}\n{seq}\n")
                 
         return output_file
-
+    
     def calculate_jsd(self, aligned_file: Path) -> List[float]:
         """Calculate conservation scores using Jensen-Shannon divergence."""
         msa = TabularMSA.read(aligned_file, constructor=DNA)
