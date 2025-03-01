@@ -22,31 +22,24 @@ class ConservationAnalyzer:
         self.aligner.open_gap_score = -0.5
         self.aligner.extend_gap_score = -0.1
 
-    def align_genomes(self, genomes: List[SeqRecord], output_dir: Path = Path("alignments")) -> Path:
-        """Align sequences using Biopython's pairwise aligner."""
-        output_dir.mkdir(exist_ok=True, parents=True)
-        
-        if not genomes:
-            raise ValueError("No genomes provided for alignment")
+    def align_genomes(self, genomes):
+        # Create alignments directory if needed
+        os.makedirs("alignments", exist_ok=True)
 
-        # Convert sequences to uppercase strings
-        sequences = [str(g.seq).upper() for g in genomes]
-        
-        # Create reference-based alignment
-        alignment = MultipleSeqAlignment([sequences[0]])
-        
-        # Align subsequent sequences
-        for seq in sequences[1:]:
-            aligned = self.aligner.align(alignment[0], seq)[0]
-            alignment.append(aligned[1])
+        # Write ALL genomes to a SINGLE input file
+        input_path = "alignments/combined_input.fasta"
+        with open(input_path, "w") as f:
+            for genome in genomes:
+                SeqIO.write(genome, f, "fasta")
 
-        # Save alignment
-        output_file = output_dir / "aligned.fasta"
-        with open(output_file, "w") as f:
-            for idx, seq in enumerate(alignment):
-                f.write(f">genome_{idx}\n{seq}\n")
-                
-        return output_file
+        # Run MAFFT with single input file
+        cmd = (
+            f"mafft --thread 1 --auto {input_path} "
+            f"> alignments/aligned.fasta"
+        )
+        subprocess.run(cmd, shell=True, check=True)
+    
+        return "alignments/aligned.fasta"
     
     def calculate_jsd(self, aligned_file: Path) -> List[float]:
         """Calculate conservation scores using Jensen-Shannon divergence."""
