@@ -17,22 +17,28 @@ class ConservationAnalyzer:
         self.window_size = window_size
 
     def align_genomes(self, genomes: List, output_dir: Path = Path("alignments")) -> Path:
-        """Robust genome alignment with MAFFT."""
-        output_dir.mkdir(exist_ok=True)
+        """Robust MAFFT alignment with comprehensive error handling."""
+        output_dir.mkdir(exist_ok=True, parents=True)
     
-        # 1. Save genomes with sanitized IDs
+        # 1. Generate safe filenames and validate sequences
         fasta_paths = []
         for idx, genome in enumerate(genomes):
-            safe_id = genome.id.replace(" ", "_").replace(".", "_")  # Sanitize ID
-            path = output_dir / f"genome_{idx}_{safe_id}.fasta"
+            # Sanitize filename and sequence
+            clean_id = genome.id.replace(" ", "_").replace(".", "_").replace("/", "-")
+            clean_seq = str(genome.seq).replace(" ", "").upper()
+        
+            if not clean_seq:
+                raise ValueError(f"Empty sequence for genome {clean_id}")
+                
+            path = output_dir / f"input_{idx}_{clean_id[:30]}.fasta"
             with open(path, "w") as f:
-                f.write(f">{safe_id}\n{str(genome.seq)}")
+                f.write(f">{clean_id}\n{clean_seq}")
             fasta_paths.append(path)
 
-        # 2. Validate input files
-        for fp in fasta_paths:
-            if not fp.exists() or fp.stat().st_size == 0:
-            raise FileNotFoundError(f"Invalid FASTA file: {fp}")
+        # 2. Verify input files
+        missing_files = [str(fp) for fp in fasta_paths if not fp.exists()]
+        if missing_files:
+            raise FileNotFoundError(f"Missing input files: {', '.join(missing_files)}")
 
         # 3. Build MAFFT command
         output_path = output_dir / "aligned.fasta"
@@ -40,25 +46,33 @@ class ConservationAnalyzer:
             "mafft",
             "--auto",
             "--quiet",
-            "--thread", str(min(4, len(genomes))),  # Max 4 threads
-            "--out", str(output_path)
-        ] + [str(fp) for fp in fasta_paths]
+            "--thread", str(min(os.cpu_count(), 4)),  # Optimal thread count
+            "--out", str(output_path.resolve())  # Absolute path for safety
+        ] + [str(fp.resolve()) for fp in fasta_paths]  # Absolute paths for inputs
 
-        # 4. Run with proper error handling
+        # 4. Execute with robust error handling
         try:
             result = subprocess.run(
                 cmd,
                 check=True,
-                capture_output=True,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
                 text=True,
-                encoding="utf-8"
+                encoding="utf-8",
             )
+            if "error" in result.stderr.lower():
+                raise RuntimeError(f"MAFFT warning: {result.stderr}")
+            
         except subprocess.CalledProcessError as e:
-            error_msg = f"MAFFT failed: {e.stderr}" if e.stderr else "Check input files"
-            raise RuntimeError(f"Alignment failed ❌\n{error_msg}") from None
+            error_msg = (
+                f"MAFFT failed with code {e.returncode}\n"
+                f"Command: {' '.join(cmd)}\n"
+                f"Error: {e.stderr}"
+            )
+            raise RuntimeError(error_msg) from None
 
         return output_path
-
+    
     def calculate_jsd(self, aligned_file: Path) -> List[float]:
         msa = TabularMSA.read(aligned_file, constructor=DNA)
         scores = []
