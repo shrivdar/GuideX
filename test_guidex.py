@@ -8,10 +8,14 @@ import sys
 
 def main():
     try:
-        # 1. Genome fetching with validation
-        print("🕵️ Fetching genomes from NCBI...")
-        fetcher = GenomeFetcher(email="darsh.shri123@gmail.com")
-        raw_genomes = fetcher.fetch_ncbi("Influenza A virus[Organism]", limit=5)
+        from Bio.Seq import Seq
+        from Bio.SeqRecord import SeqRecord
+
+        genomes = [
+            SeqRecord(Seq("ATGCGATAGCATCGACTAGCATGACGTACGTACGTACGTACGTACGTACGTACGTA"), id="Test1"),
+            SeqRecord(Seq("ATGCGATAGCATGGACTAGCATGACGTACGTACGTACGTACGTACGTACGTACGTA"), id="Test2")
+        ]
+        print("⚠️ Using test sequences - NCBI unavailable")
         
         # Convert to valid SeqRecords (FIXED SYNTAX)
         genomes = []
