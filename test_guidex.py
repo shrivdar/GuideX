@@ -30,6 +30,7 @@ def main():
         
         if not genomes:
             raise ValueError("No genomes found! Check your search term.")
+        print(f"First genome: {genomes[0].seq[:50]}...")
         print(f"✅ Retrieved {len(genomes)} genomes")
 
         # 2. Find conserved regions (now uses fixed align_genomes)
