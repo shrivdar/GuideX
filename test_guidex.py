@@ -1,47 +1,30 @@
 from Bio.SeqRecord import SeqRecord
 from Bio.Seq import Seq
 from pathlib import Path
-from guidex.genome_fetcher import GenomeFetcher
 from guidex.conservation import ConservationAnalyzer
 from guidex.grna_designer import GuideXGrnaDesigner
 import sys
 
 def main():
     try:
-        from Bio.Seq import Seq
-        from Bio.SeqRecord import SeqRecord
-
+        # 1. Use test sequences directly (no NCBI dependency)
         genomes = [
-            SeqRecord(Seq("ATGCGATAGCATCGACTAGCATGACGTACGTACGTACGTACGTACGTACGTACGTA"), id="Test1"),
-            SeqRecord(Seq("ATGCGATAGCATGGACTAGCATGACGTACGTACGTACGTACGTACGTACGTACGTA"), id="Test2")
+            SeqRecord(
+                Seq("ATGCGATAGCATCGACTAGCATGACGTACGTACGTACGTACGTACGTACGTACGTA" * 100),  # Extended to 5400bp
+                id="Test1"
+            ),
+            SeqRecord(
+                Seq("ATGCGATAGCATGGACTAGCATGACGTACGTACGTACGTACGTACGTACGTACGTA" * 100),  # Extended to 5400bp
+                id="Test2"
+            )
         ]
         print("⚠️ Using test sequences - NCBI unavailable")
         
-        # Convert to valid SeqRecords (FIXED SYNTAX)
-        genomes = []
-        for g in raw_genomes:
-            try:
-                # Corrected line: added missing closing parenthesis
-                seq = Seq(str(g.seq).upper().ungap())
-                if len(seq) >= 1000:  # Keep only long enough sequences
-                    genomes.append(SeqRecord(
-                        seq, 
-                        id=g.id, 
-                        description=f"Length: {len(seq)}bp"
-                    ))
-                    print(f"✅ Validated {g.id} ({len(seq)} bp)")
-                else:
-                    print(f"⚠️ Skipped {g.id} (too short: {len(seq)} bp)")
-            except Exception as e:
-                print(f"🚨 Error processing {g.id}: {str(e)}", file=sys.stderr)
+        # 2. Validate genomes
+        print(f"\n🔬 Test genome set: {len(genomes)} sequences")
+        print(f"📏 Length: {len(genomes[0].seq)} bp")  # Should show 5400bp
 
-        # Validate genome count
-        if len(genomes) < 2:
-            raise ValueError(f"Only {len(genomes)} valid genomes (need ≥2)")
-        print(f"\n🔬 Final genome set: {len(genomes)} sequences")
-        print(f"📏 Length range: {min(len(g.seq) for g in genomes)}-{max(len(g.seq) for g in genomes)} bp")
-
-        # 2. Alignment and Conservation Analysis
+        # 3. Alignment and Conservation Analysis
         print("\n🧬 Aligning genomes...")
         align_dir = Path("alignments").absolute()
         align_dir.mkdir(exist_ok=True)
