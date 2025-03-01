@@ -82,6 +82,17 @@ class ConservationAnalyzer:
             raise RuntimeError(error_msg)
 
         return output_path
+
+    def _validate_sequences(self, sequences):
+    """Ensure sequences are alignment-ready"""
+    if len(sequences) < 2:
+        raise ValueError("Need at least 2 sequences")
+    
+    lengths = [len(rec.seq) for rec in sequences]
+    if max(lengths) - min(lengths) > 1000:
+        raise ValueError("Sequence length variation too large (>1000bp)")
+    
+    return sequences
     
     def calculate_jsd(self, aligned_file: Path) -> List[float]:
         """Calculate conservation scores using Jensen-Shannon divergence."""
@@ -120,3 +131,7 @@ class ConservationAnalyzer:
             title="GuideX Conservation Profile"
         )
         fig.write_html(str(output_file))
+
+input_path = output_dir/"MAFFT_IN.fasta"
+logger.info(f"Input file path: {input_path}")
+logger.info(f"First sequence: {str(valid_genomes[0].seq[:50]}...")
