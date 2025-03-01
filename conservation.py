@@ -3,7 +3,7 @@ import subprocess
 import numpy as np
 from pathlib import Path
 from typing import List
-from Bio import SeqIO  # Added import
+from Bio import SeqIO
 from Bio.Seq import Seq
 from skbio import DNA, TabularMSA
 from scipy.spatial.distance import jensenshannon
@@ -19,54 +19,68 @@ class ConservationAnalyzer:
         self.window_size = window_size
 
     def align_genomes(self, genomes, output_dir="alignments"):
-        """Fixed MAFFT implementation with strict input validation"""
-        # Convert Path objects to strings
-        output_dir = str(output_dir)
-        os.makedirs(output_dir, exist_ok=True)
-
-        # Ensure we have SeqRecords with Seq objects
+        """MAFFT alignment with rigorous path handling"""
+        # Convert output_dir to absolute path
+        output_dir = Path(output_dir).absolute()
+        output_dir.mkdir(parents=True, exist_ok=True)
+        
+        # Validate input genomes
+        if not isinstance(genomes, list) or len(genomes) < 2:
+            raise ValueError("Need ≥2 SeqRecords for alignment")
+            
+        # Sanitize sequences
         valid_genomes = []
-        for g in genomes:
-            if not isinstance(g.seq, Seq):
-                g.seq = Seq(str(g.seq))
-            valid_genomes.append(g)
-    
-        # Write combined input (REPLACE existing files)
-        input_path = os.path.join(output_dir, "MAFFT_IN.fasta")
+        for idx, rec in enumerate(genomes):
+            if not isinstance(rec.seq, Seq):
+                rec.seq = Seq(str(rec.seq))
+            seq_str = str(rec.seq).upper().replace("-", "")
+            if len(seq_str) < 100:
+                continue
+            valid_genomes.append(SeqRecord(Seq(seq_str), id=f"Genome_{idx+1}"))
+
+        # Write combined input (atomic write)
+        input_path = output_dir/"MAFFT_IN.fasta"
         with open(input_path, "w") as f:
-            SeqIO.write(valid_genomes, f, "fasta")
+            count = SeqIO.write(valid_genomes, f, "fasta")
+            logger.info(f"Wrote {count} sequences to {input_path}")
 
-        # Verify input file contains sequences
-        if os.path.getsize(input_path) == 0:
-            raise ValueError("Empty MAFFT input file - check genome data")
+        # Validate input file
+        if not input_path.exists():
+            raise FileNotFoundError(f"MAFFT input file not created: {input_path}")
+        if count < 2:
+            raise ValueError(f"Only {count} valid sequences for alignment")
 
-        # Run MAFFT with strict error checking
-        output_path = os.path.join(output_dir, "MAFFT_OUT.fasta")
+        # Build MAFFT command
+        output_path = output_dir/"MAFFT_OUT.fasta"
         cmd = [
             "mafft",
             "--auto",
             "--thread", "1",
-            "--quiet",  # Suppress help text
-            input_path
+            "--quiet",
+            str(input_path)
         ]
-        
+
+        # Execute with error capture
         try:
-            with open(output_path, "w") as outfile:
+            with open(output_path, "w") as f:
                 result = subprocess.run(
                     cmd,
-                    stdout=outfile,
+                    stdout=f,
                     stderr=subprocess.PIPE,
                     text=True,
-                    check=True  # Raise error on non-zero exit
+                    check=True
                 )
+            logger.info(f"MAFFT alignment successful: {output_path}")
         except subprocess.CalledProcessError as e:
-            error_msg = f"""
-            MAFFT failed with code {e.returncode}
-            Command: {' '.join(cmd)}
-            Error output: {e.stderr}
-            """
-            raise RuntimeError(error_msg) from None
-    
+            error_msg = (
+                f"MAFFT failed (code {e.returncode})\n"
+                f"Command: {' '.join(cmd)}\n"
+                f"Error: {e.stderr.strip()}"
+            )
+            logger.error(error_msg)
+            output_path.unlink(missing_ok=True)  # Clean failed output
+            raise RuntimeError(error_msg)
+
         return output_path
     
     def calculate_jsd(self, aligned_file: Path) -> List[float]:
