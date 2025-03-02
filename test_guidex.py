@@ -1,26 +1,24 @@
 from Bio.SeqRecord import SeqRecord
-from Bio.SeqRecord import SeqRecord
 from Bio.Seq import Seq
 from pathlib import Path
+import sys
+import os
+import shutil
 from guidex.genome_fetcher import GenomeFetcher
 from guidex.conservation import ConservationAnalyzer
 from guidex.grna_designer import GuideXGrnaDesigner
-import sys
-import shutil
 
-# Local fallback sequences (HA and NA genes from influenza)
+# Local fallback genomes meeting modern criteria
 LOCAL_GENOMES = [
     SeqRecord(
-        Seq(("ATGCGATAGCATCGACTAGCATGACGTACGTACGTACGTACGTACGTACGTACGTA" * 100) +
-            ("ATGCGATAGCATCGACTAGCATGACGTACGTACGTACGTACGTACGTACGTACGTA" * 100)),
+        Seq(("ATGCGATAGCATCGACTAGCATGACGTACGTACGTACGTACGTACGTACGTACGTA" * 100)),
         id="Local_HA_1",
-        description="Hemagglutinin (Local Backup)"
+        description="Hemagglutinin (Local Backup) | 5600bp"
     ),
     SeqRecord(
-        Seq(("ATGCGATAGCATGGACTAGCATGACGTACGTACGTACGTACGTACGTACGTACGTA" * 100) +
-            ("ATGCGATAGCATCGACTAGCATGACGTACGTACGTACGTACGTACGTACGTACGTA" * 100)),
+        Seq(("ATGCGATAGCATGGACTAGCATGACGTACGTACGTACGTACGTACGTACGTACGTA" * 100)),
         id="Local_NA_2",
-        description="Neuraminidase (Local Backup)"
+        description="Neuraminidase (Local Backup) | 5600bp"
     )
 ]
 
@@ -29,46 +27,51 @@ def main():
         # Clear previous runs
         shutil.rmtree("alignments", ignore_errors=True)
         shutil.rmtree("results", ignore_errors=True)
-        
-        # 1. Attempt NCBI fetch with fallback
+
+        # 1. Genome acquisition
         genomes = []
         try:
-            print("🕵️ Attempting NCBI genome fetch...")
-            fetcher = GenomeFetcher(email="darsh.shri123@gmail.com")
-            raw_genomes = fetcher.fetch_ncbi("Influenza A virus[Organism]", limit=5)
-            
-            # Process NCBI genomes
-            for g in raw_genomes:
-                try:
-                    seq = Seq(str(g.seq).upper().ungap())
-                    if len(seq) >= 1000:
-                        genomes.append(SeqRecord(seq, id=g.id))
-                        print(f"✅ NCBI Genome: {g.id} ({len(seq)} bp)")
-                except Exception as e:
-                    print(f"⚠️ NCBI Processing Error: {str(e)}")
-            
-            if len(genomes) < 2:
-                raise RuntimeError("Insufficient NCBI genomes")
-                
+            print("🕵️ Attempting NCBI Datasets API v2 fetch...")
+            fetcher = GenomeFetcher(
+                email="darsh.shri123@gmail.com",
+                api_key=os.getenv("NCBI_API_KEY")
+            )
+            genomes = fetcher.fetch_ncbi(
+                "Influenza A virus[Organism]",
+                limit=5,
+                exclude_atypical=True
+            )
+            print(f"✅ Retrieved {len(genomes)} NCBI genomes")
         except Exception as e:
-            print(f"🔴 NCBI Unavailable: {str(e)}")
-            print("🔄 Using local test genomes")
+            print(f"🔴 NCBI Unavailable: {e}")
             genomes = LOCAL_GENOMES
+            print("🔄 Using validated local genomes")
 
-        # 2. Validate genomes
-        print(f"\n🔬 Final Genome Set ({len(genomes)} sequences)")
+        # 2. Modern sequence validation
+        valid_genomes = []
         for g in genomes:
-            print(f" - {g.id}: {len(g.seq)} bp")
-        
-        # 3. Alignment and Analysis
-        print("\n🧬 Aligning genomes...")
-        conservator = ConservationAnalyzer(window_size=30)
-        aligned_file = conservator.align_genomes(genomes, "alignments")
-        print(f"🔍 Alignment saved to: {aligned_file}")
+            try:
+                # New NCBI sequence standards
+                seq = g.seq.upper().ungap()
+                if 5000 <= len(seq) <= 15000:  # Typical influenza genome range
+                    valid_genomes.append(SeqRecord(
+                        seq,
+                        id=g.id,
+                        description=f"{g.description} | Validated"
+                    ))
+                    print(f"🧬 Validated {g.id} ({len(seq)} bp)")
+                else:
+                    print(f"⚠️ Excluded {g.id} (length {len(seq)} bp)")
+            except Exception as e:
+                print(f"🚨 Validation Error: {e}")
 
-        print("\n🔎 Identifying conserved regions...")
-        jsd_scores = conservator.calculate_jsd(aligned_file)
-        conserved_regions = [(i, i+30) for i, score in enumerate(jsd_scores) if score > 0.8]
+        if len(valid_genomes) < 2:
+            raise ValueError(f"Only {len(valid_genomes)} valid genomes (need ≥2)")
+        
+        # 3. Modern alignment and analysis
+        print("\n🧬 Starting conservation pipeline...")
+        conservator = ConservationAnalyzer(window_size=30)
+        aligned_file = conservator.align_genomes(valid_genomes, Path("alignments"))
 
         if not conserved_regions:
             raise ValueError("No conserved regions found!")
@@ -91,11 +94,11 @@ def main():
         print(f"\n📁 Results saved to {output_file}")
 
     except Exception as e:
-        print(f"\n❌ Critical Error: {e}")
-        print("💡 Immediate Steps:")
-        print("1. Check internet connection")
-        print("2. Run: mafft --version")
-        print("3. Inspect alignments/MAFFT_IN.fasta")
+        print(f"\n❌ Pipeline Error: {e}")
+        print("💡 Modern Debug Checklist:")
+        print("1. Verify NCBI_API_KEY environment variable")
+        print("2. Check API status: https://api.ncbi.nlm.nih.gov/datasets/v2")
+        print("3. Inspect alignments/MAFFT_IN.fasta format")
         sys.exit(1)
 
 if __name__ == "__main__":
