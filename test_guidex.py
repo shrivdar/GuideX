@@ -11,12 +11,12 @@ from guidex.grna_designer import GuideXGrnaDesigner
 # Local fallback genomes meeting modern criteria
 LOCAL_GENOMES = [
     SeqRecord(
-        Seq(("ATGCGATAGCATCGACTAGCATGACGTACGTACGTACGTACGTACGTACGTACGTA" * 100)),
+        Seq("ATGCGATAGCATCGACTAGCATGACGTACGTACGTACGTACGTACGTACGTACGTA" * 100),
         id="Local_HA_1",
         description="Hemagglutinin (Local Backup) | 5600bp"
     ),
     SeqRecord(
-        Seq(("ATGCGATAGCATGGACTAGCATGACGTACGTACGTACGTACGTACGTACGTACGTA" * 100)),
+        Seq("ATGCGATAGCATGGACTAGCATGACGTACGTACGTACGTACGTACGTACGTACGTA" * 100),
         id="Local_NA_2",
         description="Neuraminidase (Local Backup) | 5600bp"
     )
@@ -52,7 +52,10 @@ def main():
         for g in genomes:
             try:
                 # New NCBI sequence standards
-                seq = g.seq.upper().ungap()
+                from Bio.Seq import Seq
+                from Bio.SeqUtils import gc_fraction
+                seq = str(g.seq).upper().replace("-", "")  # Remove gaps safely
+                seq = Seq(seq)  # Convert back to Seq object
                 if 5000 <= len(seq) <= 15000:  # Typical influenza genome range
                     valid_genomes.append(SeqRecord(
                         seq,
