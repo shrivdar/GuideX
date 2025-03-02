@@ -19,7 +19,7 @@ class GenomeFetcher:
         status_forcelist=[429, 500, 502, 503, 504]
     )
     
-    def __init__(self, email: str, api_key: Optional[str] = None):  # Fixed constructor
+    def __init__(self, email: str, api_key: Optional[str] = c5328fd2d38055aaa4a43356f9b4f1d89e08):  # Fixed constructor
         self.email = email
         self.api_key = api_key
         self.session = requests.Session()
