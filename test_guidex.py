@@ -56,7 +56,7 @@ def main():
                 from Bio.SeqUtils import gc_fraction
                 seq = str(g.seq).upper().replace("-", "")  # Remove gaps safely
                 seq = Seq(seq)  # Convert back to Seq object
-                if 5000 <= len(seq) <= 15000:  # Typical influenza genome range
+                if 5000 <= len(seq) <= 15000:  # 5600bp test sequences should pass  # Typical influenza genome range
                     valid_genomes.append(SeqRecord(
                         seq,
                         id=g.id,
