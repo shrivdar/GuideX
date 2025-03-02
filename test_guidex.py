@@ -40,7 +40,7 @@ def main():
             # Process NCBI genomes
             for g in raw_genomes:
                 try:
-                    seq = Seq(str(g.seq).upper().ungap()
+                    seq = Seq(str(g.seq).upper().ungap())
                     if len(seq) >= 1000:
                         genomes.append(SeqRecord(seq, id=g.id))
                         print(f"✅ NCBI Genome: {g.id} ({len(seq)} bp)")
