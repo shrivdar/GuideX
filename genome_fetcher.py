@@ -1,6 +1,7 @@
 from typing import List, Optional
 import requests
 from pathlib import Path
+sys.path.insert(0, str(Path(__file__).parent))
 from Bio.SeqRecord import SeqRecord
 from Bio.Seq import Seq
 from urllib3.util.retry import Retry
