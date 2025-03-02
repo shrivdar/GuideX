@@ -95,7 +95,36 @@ class GenomeFetcher:
             report["sequence"]["sequence"] is not None
         )
 
-    def load_dehydrated(self, zip_path: Path) -> List[SeqRecord]:
-        """Load from dehydrated dataset package"""
-        # Implementation for zip package handling
-        pass
+def load_dehydrated(self, zip_path: Path) -> List[SeqRecord]:
+    """Load and rehydrate genomes from NCBI dehydrated package"""
+    from zipfile import ZipFile
+    import tempfile
+    import json
+    
+    genomes = []
+    try:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            # Extract package
+            with ZipFile(zip_path, 'r') as z:
+                z.extractall(tmpdir)
+                
+            # Read dataset catalog
+            catalog_path = Path(tmpdir) / "ncbi_dataset" / "dataset_catalog.json"
+            with open(catalog_path) as f:
+                catalog = json.load(f)
+                
+            # Process sequences
+            for assembly in catalog["assemblies"]:
+                seq_file = Path(tmpdir) / assembly["sequenceFile"]
+                if seq_file.exists():
+                    with open(seq_file) as sf:
+                        for record in SeqIO.parse(sf, "fasta"):
+                            genomes.append(record)
+                            if len(genomes) >= 100:  # Safety limit
+                                return genomes
+                                
+            return genomes
+            
+    except Exception as e:
+        logger.error(f"Dehydrated load failed: {e}")
+        raise GenomeFetchError(f"Dehydrated package error: {e}")
