@@ -4,6 +4,7 @@ from pathlib import Path
 import sys
 import os
 import shutil
+sys.path.insert(0, str(Path(__file__).parent))
 from guidex.genome_fetcher import GenomeFetcher
 from guidex.conservation import ConservationAnalyzer
 from guidex.grna_designer import GuideXGrnaDesigner
