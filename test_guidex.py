@@ -73,9 +73,32 @@ def main():
         conservator = ConservationAnalyzer(window_size=30)
         aligned_file = conservator.align_genomes(valid_genomes, Path("alignments"))
 
-        if not conserved_regions:
-            raise ValueError("No conserved regions found!")
-        print(f"✅ Found {len(conserved_regions)} conserved regions")
+        print("\n🧬 Starting conservation pipeline...")
+        conservator = ConservationAnalyzer(window_size=30)
+        aligned_file = conservator.align_genomes(valid_genomes, Path("alignments"))
+        print(f"🔍 Alignment saved to: {aligned_file}")
+
+        print("\n🔎 Identifying conserved regions...")
+        try:
+            jsd_scores = conservator.calculate_jsd(aligned_file)
+            conserved_regions = [
+                (i, i+30) 
+                for i, score in enumerate(jsd_scores) 
+                if score > 0.8
+            ]
+    
+            if not conserved_regions:
+                raise ValueError("No conserved regions found!")
+            print(f"✅ Found {len(conserved_regions)} conserved regions")
+    
+            # Visualization
+            plot_path = Path("results") / "conservation.html"
+            conservator.plot_conservation(jsd_scores, plot_path)
+            print(f"📊 Conservation plot saved to {plot_path}")
+
+        except Exception as e:
+            print(f"🚨 Conservation analysis failed: {e}")
+            raise
 
         # 3. Design gRNAs
         print("\n🔬 Designing Cas13 gRNAs...")
