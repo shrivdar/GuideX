@@ -1,33 +1,37 @@
-import os
-from pathlib import Path
-from typing import List, Union
+from typing import List, Optional
 import requests
+from pathlib import Path
 from Bio.SeqRecord import SeqRecord
 from Bio.Seq import Seq
-from .utils.logger import setup_logger
-from .utils.exceptions import GenomeFetchError
-import time
-from requests.adapters import HTTPAdapter
 from urllib3.util.retry import Retry
-
-logger = setup_logger(__name__)
+from requests.adapters import HTTPAdapter
+import time
+import os
 
 class GenomeFetcher:
-    """Fetch genomes from NCBI Datasets API v2 with modern features"""
+    """Modern NCBI Datasets API v2 integration with full API key support"""
     
     API_BASE = "https://api.ncbi.nlm.nih.gov/datasets/v2"
-    RATE_LIMIT = 5  # requests per second
+    RATE_LIMIT = 5  # Default requests/sec
     RETRY_STRATEGY = Retry(
         total=3,
         backoff_factor=1,
         status_forcelist=[429, 500, 502, 503, 504]
     )
-    
-    def __init__(self, email: str, api_key: str = None):
+
+    def __init__(self, email: str, api_key: Optional[str] = None):
+        """
+        Initialize with API credentials
+        :param email: Required for NCBI compliance
+        :param api_key: Optional for higher rate limits
+        """
         self.email = email
         self.api_key = api_key
         self.session = requests.Session()
         self.session.mount("https://", HTTPAdapter(max_retries=self.RETRY_STRATEGY))
+        
+        # Enhanced rate limiting with API key
+        self.RATE_LIMIT = 10 if api_key else 5
 
     def fetch_ncbi(
         self, 
@@ -35,7 +39,12 @@ class GenomeFetcher:
         limit: int = 5,
         exclude_atypical: bool = True
     ) -> List[SeqRecord]:
-        """Fetch genomes using NCBI Datasets API v2"""
+        """
+        Fetch genomes using NCBI Datasets API v2
+        :param search_term: e.g. "Influenza A virus[Organism]"
+        :param limit: Maximum results to return
+        :param exclude_atypical: Filter out problematic genomes
+        """
         try:
             params = {
                 "term": search_term,
@@ -47,52 +56,56 @@ class GenomeFetcher:
             
             if self.api_key:
                 params["api_key"] = self.api_key
-                self.RATE_LIMIT = 10  # Increased limit with API key
 
-            # Get dehydrated dataset
-            resp = self._rate_limited_request(
+            response = self._rate_limited_request(
                 f"{self.API_BASE}/genome/search",
                 params=params
             )
-            data = resp.json()
-            
-            # Rehydrate sequences
-            return self._process_dataset(data["data"]["reports"])
+            return self._process_response(response.json())
             
         except Exception as e:
-            logger.error(f"API v2 fetch failed: {e}")
-            raise GenomeFetchError(f"NCBI API v2 error: {e}")
+            raise RuntimeError(f"API v2 fetch failed: {str(e)}")
 
-    def _rate_limited_request(self, url, **kwargs):
-        """Handle NCBI's rate limits with exponential backoff"""
-        delay = 1 / self.RATE_LIMIT
-        time.sleep(delay)
-        response = self.session.get(url, timeout=15, **kwargs)
+    def _rate_limited_request(self, url, params=None):
+        """Handle NCBI rate limits with exponential backoff"""
+        time.sleep(1/self.RATE_LIMIT)  # Enforce rate limit
+        response = self.session.get(
+            url,
+            params=params,
+            headers={"User-Agent": f"GuideX/{os.getenv('VERSION', '1.0')}"},
+            timeout=15
+        )
         response.raise_for_status()
         return response
 
-    def _process_dataset(self, reports: list) -> List[SeqRecord]:
-        """Convert API response to SeqRecords with modern filtering"""
+    def _process_response(self, data: dict) -> List[SeqRecord]:
+        """Convert API response to validated SeqRecords"""
         genomes = []
-        for report in reports:
+        for item in data.get("data", {}).get("reports", []):
             try:
-                if self._is_valid_genome(report):
-                    seq = Seq(report["sequence"]["sequence"])
-                    genomes.append(SeqRecord(
-                        seq,
-                        id=report["accession"],
-                        description=f"{report['organism']['name']} | {report['length']}bp"
-                    ))
+                if self._is_valid_genome(item):
+                    seq = self._create_sequence(item)
+                    genomes.append(seq)
             except KeyError as e:
-                logger.warning(f"Skipping invalid genome report: {e}")
+                continue
         return genomes
 
-    def _is_valid_genome(self, report: dict) -> bool:
-        """Apply modern validation criteria"""
+    def _is_valid_genome(self, genome_data: dict) -> bool:
+        """Apply NCBI's quality criteria"""
         return (
-            report["length"] >= 1000 and
-            not report.get("is_atypical", False) and
-            report["sequence"]["sequence"] is not None
+            genome_data.get("length", 0) >= 1000 and
+            not genome_data.get("is_atypical", False) and
+            "sequence" in genome_data and
+            "sequence" in genome_data["sequence"]
+        )
+
+    def _create_sequence(self, genome_data: dict) -> SeqRecord:
+        """Create standardized SeqRecord from API data"""
+        return SeqRecord(
+            Seq(genome_data["sequence"]["sequence"]),
+            id=genome_data.get("accession", "UNKNOWN"),
+            description=f"{genome_data.get('organism', {}).get('name', '')} | "
+                       f"{genome_data.get('length', 0)}bp"
         )
 
 def load_dehydrated(self, zip_path: Path) -> List[SeqRecord]:
