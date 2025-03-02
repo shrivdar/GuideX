@@ -9,7 +9,7 @@ import time
 import os
 
 class GenomeFetcher:
-    """Modern NCBI Datasets API v2 integration with full API key support"""
+    """Modern NCBI Datasets API v2 integration"""
     
     API_BASE = "https://api.ncbi.nlm.nih.gov/datasets/v2"
     RATE_LIMIT = 5  # Default requests/sec
@@ -18,19 +18,17 @@ class GenomeFetcher:
         backoff_factor=1,
         status_forcelist=[429, 500, 502, 503, 504]
     )
-
-    def __init__(self, email: str, api_key: Optional[str] = None):
-        """
-        Initialize with API credentials
-        :param email: Required for NCBI compliance
-        :param api_key: Optional for higher rate limits
-        """
+    
+    def __init__(self, email: str, api_key: Optional[str] = None):  # Fixed constructor
         self.email = email
         self.api_key = api_key
         self.session = requests.Session()
-        self.session.mount("https://", HTTPAdapter(max_retries=self.RETRY_STRATEGY))
-        
-        # Enhanced rate limiting with API key
+        self.session.mount("https://", HTTPAdapter(max_retries=Retry(
+            total=3,
+            backoff_factor=1,
+            status_forcelist=[429, 500, 502, 503, 504]
+        )))
+
         self.RATE_LIMIT = 10 if api_key else 5
 
     def fetch_ncbi(
