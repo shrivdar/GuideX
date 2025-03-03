@@ -4,8 +4,8 @@ from pathlib import Path
 from typing import List, Dict
 from Bio.Seq import Seq
 import subprocess
-from .utils.logger import setup_logger
-from .utils.exceptions import GrnaDesignError
+from guidex.utils.logger import setup_logger
+from guidex.utils.exceptions import GrnaDesignError
 
 logger = setup_logger(__name__)
 
