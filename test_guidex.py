@@ -9,7 +9,7 @@ sys.path.insert(0, str(Path(__file__).parent))
 importlib.invalidate_caches()
 from guidex.genome_fetcher import GenomeFetcher
 from guidex.conservation import ConservationAnalyzer
-from guidex.grna_designer import GuideXGrnaDesigner
+from guidex.core.grna_designer import GuideXGrnaDesigner
 
 # Valid local genomes meeting NCBI v2 criteria
 LOCAL_GENOMES = [
