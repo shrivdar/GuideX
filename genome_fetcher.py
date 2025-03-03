@@ -11,7 +11,7 @@ import os
 class GenomeFetcher:
     """Modern NCBI Datasets API v2 integration"""
     
-    API_BASE = "https://api.ncbi.nlm.nih.gov/datasets/v2"
+    API_BASE = "https://api.ncbi.nlm.nih.gov/datasets/v2alpha"  # Updated API version
     RATE_LIMIT = 5  # Default requests/sec
     RETRY_STRATEGY = Retry(
         total=3,
@@ -19,16 +19,11 @@ class GenomeFetcher:
         status_forcelist=[429, 500, 502, 503, 504]
     )
     
-    def __init__(self, email: str, api_key: Optional[str] = None):  # Fixed constructor
+    def __init__(self, email: str, api_key: Optional[str] = None):
         self.email = email
         self.api_key = api_key
         self.session = requests.Session()
-        self.session.mount("https://", HTTPAdapter(max_retries=Retry(
-            total=3,
-            backoff_factor=1,
-            status_forcelist=[429, 500, 502, 503, 504]
-        )))
-
+        self.session.mount("https://", HTTPAdapter(max_retries=self.RETRY_STRATEGY))
         self.RATE_LIMIT = 10 if api_key else 5
 
     def fetch_ncbi(
@@ -40,24 +35,24 @@ class GenomeFetcher:
         """
         Fetch genomes using NCBI Datasets API v2
         :param search_term: e.g. "Influenza A virus[Organism]"
-        :param limit: Maximum results to return
-        :param exclude_atypical: Filter out problematic genomes
         """
         try:
+            organism_name = search_term.split("[Organism]")[0].strip()
             params = {
-                "term": search_term,
+                "organism": organism_name,
                 "limit": limit,
-                "data_type": "genome",
-                "include": "sequence",
-                "exclude_atypical": str(exclude_atypical).lower()
+                "filters.refseq_only": "true",
+                "returned_content": "COMPLETE"
             }
             
+            headers = {}
             if self.api_key:
-                params["api_key"] = self.api_key
+                headers["api-key"] = self.api_key  # API key in headers
 
             response = self._rate_limited_request(
-                f"{self.API_BASE}/genome/search",
-                params=params
+                f"{self.API_BASE}/genomes/search",
+                params=params,
+                headers=headers
             )
             return self._process_response(response.json())
             
