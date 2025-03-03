@@ -4,6 +4,8 @@ from pathlib import Path
 from typing import List, Dict
 from Bio.Seq import Seq
 import subprocess
+import sys
+sys.path.insert(0, "/Users/DarshShrivastava/GuideX_Fresh")
 from guidex.utils.logger import setup_logger
 from guidex.utils.exceptions import GrnaDesignError
 
