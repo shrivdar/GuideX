@@ -13,15 +13,15 @@ from guidex.utils.logger import setup_logger
 logger = setup_logger(__name__)
 
 class ConservationAnalyzer:
-    """Modern conservation analysis pipeline with API v2 integration"""
+    """Modern conservation analysis pipeline"""
     
     def __init__(self, window_size: int = 30):
         self.window_size = window_size
         self.mafft_path = self._verify_mafft()
-        self.min_conservation = 0.8  # Modern default
+        self.min_conservation = 0.8
 
     def _verify_mafft(self):
-        """Ensure MAFFT v16+ is installed"""
+        """Ensure MAFFT v7.5+ is installed"""
         try:
             result = subprocess.run(
                 ["mafft", "--version"],
@@ -29,11 +29,40 @@ class ConservationAnalyzer:
                 text=True,
                 check=True
             )
-            if "v7.5" not in result.stderr:  # Update version check as needed
-                raise RuntimeError("Requires MAFFT v16+")
+            if "v7" not in result.stderr:
+                raise RuntimeError("Requires MAFFT v7.5+")
             return "mafft"
         except Exception as e:
             raise RuntimeError(f"MAFFT verification failed: {str(e)}")
+
+    def _run_mafft(self, input_path: Path, output_dir: Path) -> Path:
+        """Execute MAFFT with compatible parameters"""
+        output_path = output_dir / "MAFFT_OUT.fasta"
+        cmd = [
+            self.mafft_path,
+            "--auto",
+            "--thread", "1",
+            "--quiet",  # Removed deprecated parameters
+            str(input_path)
+        ]
+
+        try:
+            with open(output_path, "w") as f:
+                result = subprocess.run(
+                    cmd,
+                    stdout=f,
+                    stderr=subprocess.PIPE,
+                    text=True,
+                    check=True,
+                    timeout=300
+                )
+            return output_path
+            
+        except subprocess.CalledProcessError as e:
+            error_msg = f"MAFFT failed: {e.stderr}"
+            logger.error(error_msg)
+            output_path.unlink(missing_ok=True)
+            raise RuntimeError(error_msg)
 
     def align_genomes(self, genomes, output_dir: Path) -> Path:
         """Modern alignment workflow"""
