@@ -114,13 +114,11 @@ class ConservationAnalyzer:
         output_path = output_dir / "MAFFT_OUT.fasta"
         cmd = [
             self.mafft_path,
-            "--auto",
+            "--auto",  # Let MAFFT choose best algorithm
             "--thread", "1",
             "--quiet",
-            "--maxiterate", "1000",
-            "--include", "genome",
             str(input_path)
-        ]
+        ]  # Removed deprecated options
 
         try:
             with open(output_path, "w") as f:
@@ -133,7 +131,6 @@ class ConservationAnalyzer:
                     timeout=300
                 )
             return output_path
-            
         except subprocess.CalledProcessError as e:
             error_msg = f"MAFFT failed: {e.stderr}"
             logger.error(error_msg)
