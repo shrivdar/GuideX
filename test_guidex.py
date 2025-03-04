@@ -32,10 +32,7 @@ def main():
         shutil.rmtree("results", ignore_errors=True)
 
         # 1. Initialize fetcher with API key from environment
-        fetcher = GenomeFetcher(
-            email="darsh.shri123@gmail.com",
-            api_key=os.getenv("NCBI_API_KEY")  # Get from environment
-        )
+        fetcher = GenomeFetcher(api_key=os.getenv("NCBI_API_KEY"))
 
         # 2. Attempt NCBI fetch
         genomes = []
