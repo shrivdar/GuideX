@@ -35,6 +35,7 @@ class GenomeFetcher:
         self.session = requests.Session()
         self.session.mount("https://", HTTPAdapter(max_retries=self.RETRY_STRATEGY))
         self._configure_cli()
+        self.cache_dir = Path("~/.guidex/genome_cache").expanduser()
             
     def _verify_cli(self):
         """Validate CLI v16+ installation"""
