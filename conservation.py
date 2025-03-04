@@ -5,7 +5,7 @@ from pathlib import Path
 from typing import List
 from Bio import SeqIO
 from Bio.Seq import Seq
-from skbio import DNA, TabularMSA
+from scikit-bio import DNA, TabularMSA
 from scipy.spatial.distance import jensenshannon
 import plotly.express as px
 from guidex.utils.logger import setup_logger
