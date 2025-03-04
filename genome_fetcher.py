@@ -15,23 +15,24 @@ import time
 
 class GenomeFetcher:
     """Modern NCBI Genome Fetcher using CLI v16+ and API v2 (2025 standards)"""
-    def __init__(self, api_key: Optional[str] = None):
     
-    CLI_PATH = "datasets"
-    ACCESSION_REGEX = r"^GC[AFN]_[0-9]{11}\.\d$"  # 2025 accession format
-    RATE_LIMIT = 8  # Requests/second with API key
+    CLI_PATH = "datasets"  # <-- PROPER CLASS LEVEL
+    ACCESSION_REGEX = r"^GC[AFN]_[0-9]{11}\.\d$"
+    RATE_LIMIT = 8
     RETRY_STRATEGY = Retry(
         total=5,
         backoff_factor=1.5,
         status_forcelist=[429, 500, 502, 503, 504]
     )
 
-    def __init__(self, api_key: Optional[str] = None):
+    def __init__(self, api_key: Optional[str] = None):  # Line 18
+        # PROPERLY INDENTED INIT CODE
         self.api_key = api_key or os.getenv("NCBI_API_KEY_2025")
+        self._verify_cli()
+        self.logger = logging.getLogger(__name__)
         self.session = requests.Session()
         self.session.mount("https://", HTTPAdapter(max_retries=self.RETRY_STRATEGY))
         self._configure_cli()
-        self.logger = logging.getLogger(__name__)
 
     def _configure_cli(self):
         """Set up CLI with modern authentication"""
