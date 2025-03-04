@@ -40,9 +40,9 @@ def main():
         try:
             print("🕵️ Attempting NCBI Datasets API v2 fetch...")
             genomes = fetcher.fetch_genomes(
-                target="Influenza A virus",  # Remove [Organism] qualifier
+                target="Influenza A virus",
                 genome_type="reference",
-                # Add limit parameter handling to class
+                limit=5
             )
             print(f"✅ Retrieved {len(genomes)} NCBI genomes")
         except Exception as e:
