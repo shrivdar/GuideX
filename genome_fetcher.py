@@ -98,7 +98,19 @@ class GenomeFetcher2025:
                 return self._extract_genomes(f"{tmpdir}/dataset.zip")
             except subprocess.CalledProcessError as e:
                 raise RuntimeError(f"Accession download failed: {e.stderr}")
-
+                
+    def _rate_limited_request(self, url, params=None, headers=None):  # Add headers parameter
+        """Handle NCBI rate limits with exponential backoff"""
+        time.sleep(1/self.RATE_LIMIT)
+        response = self.session.get(
+            url,
+            params=params,
+            headers=headers,  # Pass headers here
+            timeout=15
+        )
+        response.raise_for_status()
+        return response
+    
     def _process_jsonl(self, jsonl_data: str) -> List[SeqRecord]:
         """Process 2025 JSON Lines format with quality control"""
         genomes = []
