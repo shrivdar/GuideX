@@ -1,14 +1,17 @@
 import logging
-from typing import Any
 
-def setup_logger(name: str) -> logging.Logger:
-    """Create and configure a logger."""
+def setup_logger(name: str = "guidex"):
     logger = logging.getLogger(name)
     logger.setLevel(logging.INFO)
-    handler = logging.StreamHandler()
+    
     formatter = logging.Formatter(
-        "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
+        '%(asctime)s - %(name)s - %(levelname)s - %(message)s'
     )
-    handler.setFormatter(formatter)
-    logger.addHandler(handler)
+    
+    console_handler = logging.StreamHandler()
+    console_handler.setFormatter(formatter)
+    
+    if not logger.handlers:
+        logger.addHandler(console_handler)
+    
     return logger
