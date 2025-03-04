@@ -1,3 +1,4 @@
+import requests
 from typing import List, Optional, Dict, Union
 from pathlib import Path
 import subprocess
