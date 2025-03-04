@@ -40,11 +40,12 @@ class ConservationAnalyzer:
         output_path = output_dir / "MAFFT_OUT.fasta"
         cmd = [
             self.mafft_path,
-            "--auto",  # Let MAFFT choose best algorithm
+            "--auto",        # Modern algorithm selection
             "--thread", "1",
+            "--reorder",     # Keep consistent output order
             "--quiet",
             str(input_path)
-        ]  # Removed deprecated options
+        ]
 
         try:
             with open(output_path, "w") as f:
@@ -58,8 +59,8 @@ class ConservationAnalyzer:
                 )
             return output_path
         except subprocess.CalledProcessError as e:
-            error_msg = f"MAFFT failed: {e.stderr}"
-            logger.error(error_msg)
+            error_msg = f"MAFFT failed: {e.stderr.split('error:')[-1].strip()}"  # Cleaner error
+            self.logger.error(error_msg)
             output_path.unlink(missing_ok=True)
             raise RuntimeError(error_msg)
 
