@@ -33,17 +33,6 @@ class GenomeFetcher:
         self.session = requests.Session()
         self.session.mount("https://", HTTPAdapter(max_retries=self.RETRY_STRATEGY))
         self._configure_cli()
-
-    def _configure_cli(self):
-        """Set up CLI with modern authentication"""
-        try:
-            subprocess.run(
-                [self.CLI_PATH, "config", "set", "api-key", self.api_key],
-                check=True,
-                capture_output=True
-            )
-        except subprocess.CalledProcessError as e:
-            self.logger.warning(f"CLI config failed: {e.stderr.decode()}")
             
     def _verify_cli(self):
         """Validate CLI v16+ installation"""
