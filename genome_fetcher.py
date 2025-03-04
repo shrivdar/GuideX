@@ -13,6 +13,7 @@ import logging
 from urllib3.util.retry import Retry
 from requests.adapters import HTTPAdapter
 import time
+from datetime import dateime
 
 class GenomeFetcher:
     """Modern NCBI Genome Fetcher using CLI v16+ and API v2 (2025 standards)"""
