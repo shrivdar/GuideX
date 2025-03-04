@@ -36,15 +36,15 @@ class ConservationAnalyzer:
             raise RuntimeError(f"MAFFT verification failed: {str(e)}")
 
     def _run_mafft(self, input_path: Path, output_dir: Path) -> Path:
-        """Execute MAFFT with compatible parameters"""
+        """Execute MAFFT with modern parameters"""
         output_path = output_dir / "MAFFT_OUT.fasta"
         cmd = [
             self.mafft_path,
-            "--auto",
+            "--auto",  # Let MAFFT choose best algorithm
             "--thread", "1",
-            "--quiet",  # Removed deprecated parameters
+            "--quiet",
             str(input_path)
-        ]
+        ]  # Removed deprecated options
 
         try:
             with open(output_path, "w") as f:
@@ -57,7 +57,6 @@ class ConservationAnalyzer:
                     timeout=300
                 )
             return output_path
-            
         except subprocess.CalledProcessError as e:
             error_msg = f"MAFFT failed: {e.stderr}"
             logger.error(error_msg)
