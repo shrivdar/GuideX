@@ -188,13 +188,29 @@ class GenomeFetcher:
             return list(SeqIO.parse(cache_path / "default_genomes.fna", "fasta"))
         raise RuntimeError("No genomes available and fallback cache missing")
 
-    def preload_cache(self, genomes: List[SeqRecord]):
-        """Cache genomes for offline use"""
+    def preload_cache(self, genomes: List[SeqRecord], organism: str):
+        """Cache genomes with organism-specific organization"""
         cache_dir = Path("~/.guidex/genome_cache").expanduser()
-        cache_dir.mkdir(parents=True, exist_ok=True)
-        
-        with open(cache_dir / "default_genomes.fna", "w") as f:
+        organism_dir = cache_dir / organism.replace(" ", "_")
+        organism_dir.mkdir(parents=True, exist_ok=True)
+    
+        cache_file = organism_dir / "genomes.fna"
+    
+        with open(cache_file, "w") as f:
             SeqIO.write(genomes, f, "fasta-2line")
+    
+        self.logger.info(f"Cached {len(genomes)} genomes for {organism} at {cache_file}")
+
+    def load_cached_genomes(self, organism: str) -> List[SeqRecord]:
+        """Load organism-specific genomes from cache"""
+        cache_dir = Path("~/.guidex/genome_cache").expanduser()
+        organism_dir = cache_dir / organism.replace(" ", "_")
+        cache_file = organism_dir / "genomes.fna"
+    
+        if cache_file.exists():
+            self.logger.debug(f"Loading cached genomes from {cache_file}")
+            return list(SeqIO.parse(cache_file, "fasta"))
+        raise FileNotFoundError(f"No cached genomes for {organism}")
 
     @property
     def status(self) -> Dict:
