@@ -51,6 +51,18 @@ class GenomeFetcher:
                 "NCBI datasets CLI not found. Install with: "
                 "brew install ncbi-datasets"
             )
+    def _configure_cli(self):
+        """Configure CLI authentication"""
+        if self.api_key:
+            try:
+                subprocess.run(
+                    [self.CLI_PATH, "config", "set", "api-key", self.api_key],
+                    check=True,
+                    stdout=subprocess.DEVNULL,
+                    stderr=subprocess.DEVNULL
+                )
+            except subprocess.CalledProcessError as e:
+                self.logger.warning("Failed to configure CLI authentication")
 
     def fetch_genomes(
         self,
