@@ -15,6 +15,7 @@ import time
 
 class GenomeFetcher:
     """Modern NCBI Genome Fetcher using CLI v16+ and API v2 (2025 standards)"""
+    def __init__(self, api_key: Optional[str] = None):
     
     CLI_PATH = "datasets"
     ACCESSION_REGEX = r"^GC[AFN]_[0-9]{11}\.\d$"  # 2025 accession format
