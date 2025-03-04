@@ -109,34 +109,6 @@ class ConservationAnalyzer:
                 rec.id = f"Genome_{idx+1}"  # Standardize IDs
                 SeqIO.write(rec, f, "fasta-2line")
 
-    def _run_mafft(self, input_path: Path, output_dir: Path) -> Path:
-        """Execute MAFFT with modern parameters"""
-        output_path = output_dir / "MAFFT_OUT.fasta"
-        cmd = [
-            self.mafft_path,
-            "--auto",  # Let MAFFT choose best algorithm
-            "--thread", "1",
-            "--quiet",
-            str(input_path)
-        ]  # Removed deprecated options
-
-        try:
-            with open(output_path, "w") as f:
-                result = subprocess.run(
-                    cmd,
-                    stdout=f,
-                    stderr=subprocess.PIPE,
-                    text=True,
-                    check=True,
-                    timeout=300
-                )
-            return output_path
-        except subprocess.CalledProcessError as e:
-            error_msg = f"MAFFT failed: {e.stderr}"
-            logger.error(error_msg)
-            output_path.unlink(missing_ok=True)
-            raise RuntimeError(error_msg)
-
     def _load_alignment(self, path: Path) -> TabularMSA:
         """Load alignment with validation"""
         if not path.exists():
