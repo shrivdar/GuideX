@@ -13,7 +13,7 @@ import logging
 from urllib3.util.retry import Retry
 from requests.adapters import HTTPAdapter
 import time
-from datetime import dateime
+from datetime import datetime
 
 class GenomeFetcher:
     """Modern NCBI Genome Fetcher using CLI v16+ and API v2 (2025 standards)"""
@@ -67,26 +67,33 @@ class GenomeFetcher:
                 self.logger.warning("Failed to configure CLI authentication")
 
     def fetch_genomes(
-        self,
-        target: Union[str, List[str]],
-        genome_type: str = "reference"
-    ) -> List[SeqRecord]:
-        """Unified fetch method for 2025 standards"""
-        if isinstance(target, list) and all(re.match(self.ACCESSION_REGEX, t) for t in target):
-            return self._fetch_by_accessions(target)
-        elif isinstance(target, str):
-            return self._fetch_by_taxonomy(target, genome_type)
-        raise ValueError("Invalid target type - must be accession list or organism name")
+            self,
+            target: Union[str, List[str]],
+            genome_type: str = "reference",
+            limit: int = 10
+        ) -> List[SeqRecord]:
+            if isinstance(target, list):
+                if all(re.match(self.ACCESSION_REGEX, t) for t in target):
+                    return self._fetch_by_accessions(target)
+                raise ValueError(f"Invalid accession format. Must match {self.ACCESSION_REGEX}")
+            
+            if isinstance(target, str):
+                return self._fetch_by_taxonomy(target, genome_type, limit)
+            
+            raise ValueError(
+                "Invalid target type - must be: "
+                "1) Organism name (str) "
+                "2) List of accessions matching GC[AFN]_[0-9]{11}\.\d"
+            )    
 
-    def _fetch_by_taxonomy(self, organism: str, genome_type: str) -> List[SeqRecord]:
-        """Fetch genomes using 2025 taxonomic search"""
-        cmd = [
+    def _fetch_by_taxonomy(self, organism: str, genome_type: str, limit: int):  # Add limit
+         cmd = [
             self.CLI_PATH, "summary", "genome", "taxon",
             organism,
             "--assembly-level", "chromosome",
             "--assembly-source", genome_type,
             "--annotated", 
-            "--limit", "10",
+            "--limit", str(limit),  # USE PARAMETER HERE
             "--as-json-lines"
         ]
         
