@@ -44,6 +44,23 @@ class GenomeFetcher:
             )
         except subprocess.CalledProcessError as e:
             self.logger.warning(f"CLI config failed: {e.stderr.decode()}")
+            
+    def _verify_cli(self):
+        """Validate CLI v16+ installation"""
+        try:
+            result = subprocess.run(
+                ["datasets", "--version"],
+                capture_output=True,
+                text=True,
+                check=True
+            )
+            if "16." not in result.stdout:
+                raise RuntimeError("Requires datasets CLI v16+")
+        except (subprocess.CalledProcessError, FileNotFoundError):
+            raise RuntimeError(
+                "NCBI datasets CLI not found. Install with: "
+                "brew install ncbi-datasets"
+            )
 
     def fetch_genomes(
         self,
