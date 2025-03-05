@@ -36,33 +36,64 @@ class ConservationAnalyzer:
             raise RuntimeError(f"MAFFT verification failed: {str(e)}")
 
     def _run_mafft(self, input_path: Path, output_dir: Path) -> Path:
-        """Execute MAFFT with modern parameters"""
+        """Hybrid MAFFT alignment with intelligent fallback"""
         output_path = output_dir / "MAFFT_OUT.fasta"
-        cmd = [
-            self.mafft_path,
-            "--auto",        # Modern algorithm selection
-            "--thread", "1",
-            "--reorder",     # Keep consistent output order
-            "--quiet",
-            str(input_path)
-        ]
-
+    
+        # Attempt 1: Optimized parameters
         try:
+            self.logger.debug("Attempting MAFFT with optimized parameters")
+            cmd = [
+                "mafft",
+                "--auto",
+                "--thread", "2",  # Optimal for most modern CPUs
+                "--quiet",
+                str(input_path)
+            ]
+        
             with open(output_path, "w") as f:
                 result = subprocess.run(
                     cmd,
                     stdout=f,
                     stderr=subprocess.PIPE,
-                    text=True,
                     check=True,
                     timeout=300
                 )
             return output_path
+        
         except subprocess.CalledProcessError as e:
-            error_msg = f"MAFFT failed: {e.stderr.split('error:')[-1].strip()}"  # Cleaner error
-            self.logger.error(error_msg)
+            self.logger.warning(
+                f"MAFFT optimized failed ({e.returncode}), "
+                "attempting basic alignment"
+            )
+            # Attempt 2: Failsafe simple command
+            try:
+                self.logger.debug("Attempting MAFFT basic mode")
+                cmd = f"mafft --auto {input_path} > {output_path}"
+                subprocess.run(
+                    cmd,
+                    shell=True,
+                    check=True,
+                    executable="/bin/bash",
+                    timeout=300
+                )
+                return output_path
+            
+            except subprocess.CalledProcessError as final_e:
+                self.logger.error(
+                    "MAFFT failed all attempts. Last error: "
+                    f"{final_e.stderr.decode().strip()}"
+                )
+                output_path.unlink(missing_ok=True)
+                raise RuntimeError(
+                    "MAFFT failed with both methods.\n"
+                    f"Final error: {final_e.stderr.decode().strip()}\n"
+                    "Verify installation with: mafft --version"
+                )
+            
+        except Exception as e:
+            self.logger.error(f"Unexpected MAFFT error: {str(e)}")
             output_path.unlink(missing_ok=True)
-            raise RuntimeError(error_msg)
+            raise
 
     def align_genomes(self, genomes, output_dir: Path) -> Path:
         """Modern alignment workflow"""
