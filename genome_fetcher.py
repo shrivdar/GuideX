@@ -86,7 +86,7 @@ class GenomeFetcher:
             raise ValueError(
                 "Invalid target type - must be: "
                 "1) Organism name (str) "
-                "2) List of accessions matching GC[AFN]_[0-9]{11}\.\d"
+                r"2) List of accessions matching GC[AFN]_[0-9]{11}\.\d"
             )    
 
     def _fetch_by_taxonomy(self, organism: str, genome_type: str, limit: int):  # Add limit
