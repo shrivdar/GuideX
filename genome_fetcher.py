@@ -89,7 +89,7 @@ class GenomeFetcher:
                 r"2) List of accessions matching GC[AFN]_[0-9]{11}\.\d"
             )    
 
-   def _fetch_by_taxonomy(self, organism: str, genome_type: str, limit: int) -> List[SeqRecord]:
+    def _fetch_by_taxonomy(self, organism: str, genome_type: str, limit: int) -> List[SeqRecord]:
         """Fetch genomes using 2025 taxonomic search"""
         cmd = [
             self.CLI_PATH, "summary", "genome", "taxon",
