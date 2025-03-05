@@ -89,18 +89,19 @@ class GenomeFetcher:
                 r"2) List of accessions matching GC[AFN]_[0-9]{11}\.\d"
             )    
 
-    def _fetch_by_taxonomy(self, organism: str, genome_type: str, limit: int):  # Add limit
-         cmd = [
+   def _fetch_by_taxonomy(self, organism: str, genome_type: str, limit: int) -> List[SeqRecord]:
+        """Fetch genomes using 2025 taxonomic search"""
+        cmd = [
             self.CLI_PATH, "summary", "genome", "taxon",
             organism,
             "--assembly-level", "chromosome",
             "--assembly-source", genome_type,
             "--annotated", 
-            "--limit", str(limit),  # USE PARAMETER HERE
+            "--limit", str(limit),
             "--as-json-lines"
         ]
-        
-        try:
+    
+        try:  # ← 4-space indentation from method start
             result = subprocess.run(
                 cmd,
                 capture_output=True,
@@ -109,7 +110,7 @@ class GenomeFetcher:
                 timeout=45
             )
             return self._process_jsonl(result.stdout)
-        except subprocess.CalledProcessError as e:
+        except subprocess.CalledProcessError as e:  # ← Aligned with try
             self.logger.error(f"Taxonomy fetch failed: {e.stderr}")
             return self._fallback_strategy()
 
