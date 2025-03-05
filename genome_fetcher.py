@@ -19,7 +19,7 @@ class GenomeFetcher:
     """Modern NCBI Genome Fetcher using CLI v16+ and API v2 (2025 standards)"""
     
     CLI_PATH = "/usr/local/ncbi/datasets"  # <-- PROPER CLASS LEVEL
-    ACCESSION_REGEX = r"^GC[AFN]_[0-9]{11}\.\d$"
+    ACCESSION_REGEX = r"^GC[AFN]_\d{11}\.\d$"
     RATE_LIMIT = 8
     RETRY_STRATEGY = Retry(
         total=5,
