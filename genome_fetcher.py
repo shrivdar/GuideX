@@ -75,10 +75,13 @@ class GenomeFetcher:
             if isinstance(target, list):
                 if all(re.match(self.ACCESSION_REGEX, t) for t in target):
                     return self._fetch_by_accessions(target)
-                raise ValueError(f"Invalid accession format. Must match {self.ACCESSION_REGEX}")
+                raise ValueError(
+                    f"Invalid accession format. Must match {self.ACCESSION_REGEX}"
+                )
             
             if isinstance(target, str):
                 return self._fetch_by_taxonomy(target, genome_type, limit)
+            
             
             raise ValueError(
                 "Invalid target type - must be: "
