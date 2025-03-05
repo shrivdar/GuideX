@@ -41,7 +41,7 @@ def main():
             print("🕵️ Attempting NCBI Datasets API v2 fetch...")
             genomes = fetcher.fetch_genomes(
                 target="Influenza A virus",
-                genome_type="reference",
+                genome_type="refseq",
                 limit=5
             )
             print(f"✅ Retrieved {len(genomes)} NCBI genomes")
