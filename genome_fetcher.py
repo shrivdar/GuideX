@@ -116,21 +116,25 @@ class GenomeFetcher:
     def _fetch_by_accessions(self, accessions: List[str]) -> List[SeqRecord]:
         """Batch fetch using 2025 accession format"""
         with tempfile.TemporaryDirectory() as tmpdir:
+            # First indentation level: 4 spaces
             accession_file = Path(tmpdir) / "accessions.txt"
             accession_file.write_text("\n".join(accessions))
-            
+        
+            # Maintain consistent 4-space indentation
             cmd = [
                 self.CLI_PATH, "download", "genome",
                 "accession", "--inputfile", str(accession_file),
                 "--include", "genome,cds,rna",
                 "--filename", f"{tmpdir}/dataset.zip"
             ]
-            
+        
+            # try/except aligned with previous indentation
             try:
+                # Inside try: 8 spaces (4 + 4)
                 subprocess.run(cmd, check=True, timeout=120)
                 return self._extract_genomes(f"{tmpdir}/dataset.zip")
             except subprocess.CalledProcessError as e:
-                raise RuntimeError(f"Accession download failed: {e.stderr}")
+                raise RuntimeError(f"Accession download failed: {e.stderr}")    
                 
     def _rate_limited_request(self, url, params=None, headers=None):  # Add headers parameter
         """Handle NCBI rate limits with exponential backoff"""
