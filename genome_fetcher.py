@@ -94,12 +94,13 @@ class GenomeFetcher:
         cmd = [
             self.CLI_PATH, "summary", "genome", "taxon",
             organism,
-            "--assembly-level", "chromosome",
+            "--assembly-level", "complete",  # Changed from chromosome
             "--assembly-source", genome_type,
-            "--annotated", 
+            "--annotated",
             "--limit", str(limit),
             "--as-json-lines"
         ]
+
     
         try:  # ← 4-space indentation from method start
             result = subprocess.run(
@@ -161,9 +162,9 @@ class GenomeFetcher:
     def _meets_quality_standards(self, data: Dict) -> bool:
         """2025 genome quality criteria"""
         return (
-            data.get("assembly", {}).get("assembly_level") == "chromosome" and
-            data.get("annotation", {}).get("quality") == "gold" and
-            data.get("assembly", {}).get("contig_n50") >= 100000
+            data.get("assembly", {}).get("assembly_level") in ["complete", "chromosome"] and
+            data.get("annotation", {}).get("quality") in ["gold", "silver"] and  # Expanded
+            data.get("assembly", {}).get("contig_n50", 0) >= 1000  # Reduced from 100k
         )
 
     def _create_record(self, data: Dict) -> SeqRecord:
