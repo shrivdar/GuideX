@@ -31,21 +31,25 @@ def main():
         shutil.rmtree("alignments", ignore_errors=True)
         shutil.rmtree("results", ignore_errors=True)
 
-        # 1. Initialize fetcher with API key from environment
+        # 1. Initialize fetcher
         fetcher = GenomeFetcher(api_key=os.getenv("NCBI_API_KEY_2025"))
-
 
         # 2. Attempt NCBI fetch
         genomes = []
-        try:
+        try:  # ← Proper 4-space indent
             print("🕵️ Attempting NCBI Datasets API v2 fetch...")
             genomes = fetcher.fetch_genomes(
                 target="Influenza A virus",
                 genome_type="refseq",
                 limit=5
             )
-            print(f"✅ Retrieved {len(genomes)} NCBI genomes")
-        except Exception as e:
+        
+            if not genomes:
+                raise RuntimeError("NCBI returned 0 genomes (check query parameters)")
+        
+            print(f"✅ Retrieved {len(genomes)} NCBI genomes")  # ← Inside try
+
+        except Exception as e:  # ← Aligned with inner try
             print(f"🔴 NCBI Error: {e}")
             print("🔄 Falling back to local genomes")
             genomes = LOCAL_GENOMES
