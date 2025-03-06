@@ -1,5 +1,6 @@
 import os
 import subprocess
+import logging
 from pathlib import Path
 from typing import List
 from Bio import SeqIO
