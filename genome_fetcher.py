@@ -89,20 +89,19 @@ class GenomeFetcher:
                 r"2) List of accessions matching GC[AFN]_[0-9]{11}\.\d"
             )    
 
+
     def _fetch_by_taxonomy(self, organism: str, genome_type: str, limit: int) -> List[SeqRecord]:
-        """Fetch genomes using 2025 taxonomic search"""
         cmd = [
             self.CLI_PATH, "summary", "genome", "taxon",
             organism,
-            "--assembly-level", "complete",  # Changed from chromosome
-            "--assembly-source", genome_type,
+            "--assembly-level", "all",
+            "--assembly-source", "all",
             "--annotated",
             "--limit", str(limit),
             "--as-json-lines"
         ]
-
     
-        try:  # ← 4-space indentation from method start
+        try:
             result = subprocess.run(
                 cmd,
                 capture_output=True,
@@ -110,33 +109,57 @@ class GenomeFetcher:
                 check=True,
                 timeout=45
             )
-            return self._process_jsonl(result.stdout)
-        except subprocess.CalledProcessError as e:  # ← Aligned with try
+            # Process THEN filter
+            raw_genomes = self._process_jsonl(result.stdout)
+            return [
+                g for g in raw_genomes 
+                if 1000 <= len(g.seq) <= 15000  # Length filter
+                and 'N' not in g.seq[:500]  # Initial 500bp quality
+            ]
+        except subprocess.CalledProcessError as e:
             self.logger.error(f"Taxonomy fetch failed: {e.stderr}")
             return self._fallback_strategy()
 
     def _fetch_by_accessions(self, accessions: List[str]) -> List[SeqRecord]:
-        """Batch fetch using 2025 accession format"""
-        with tempfile.TemporaryDirectory() as tmpdir:
-            # First indentation level: 4 spaces
-            accession_file = Path(tmpdir) / "accessions.txt"
-            accession_file.write_text("\n".join(accessions))
+        """Secure accession fetching with validation"""
+        # Validate BEFORE processing
+        invalid = [a for a in accessions if not re.match(self.ACCESSION_REGEX, a)]
+        if invalid:
+            raise ValueError(f"Invalid accessions: {invalid[:5]}...")
+    
+        # Batch in chunks of 50 (NCBI limit)
+        batch_size = 50
+        genomes = []
+        for i in range(0, len(accessions), batch_size):
+            batch = accessions[i:i+batch_size]
+            try:
+                genomes += self._fetch_accession_batch(batch)
+            except Exception as e:
+                self.logger.warning(f"Batch {i//batch_size} failed: {str(e)}")
         
-            # Maintain consistent 4-space indentation
+        return genomes
+
+    def _fetch_accession_batch(self, batch: List[str]) -> List[SeqRecord]:
+        """Fetch a single batch of accessions with retries"""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            accession_file = Path(tmpdir) / "accessions.txt"
+            accession_file.write_text("\n".join(batch))
+        
             cmd = [
                 self.CLI_PATH, "download", "genome",
                 "accession", "--inputfile", str(accession_file),
-                "--include", "genome,cds,rna",
+                "--include", "genome",
                 "--filename", f"{tmpdir}/dataset.zip"
             ]
         
-            # try/except aligned with previous indentation
-            try:
-                # Inside try: 8 spaces (4 + 4)
-                subprocess.run(cmd, check=True, timeout=120)
-                return self._extract_genomes(f"{tmpdir}/dataset.zip")
-            except subprocess.CalledProcessError as e:
-                raise RuntimeError(f"Accession download failed: {e.stderr}")    
+            for attempt in range(3):
+                try:
+                    subprocess.run(cmd, check=True, timeout=120)
+                    return self._extract_genomes(f"{tmpdir}/dataset.zip")
+                except subprocess.CalledProcessError as e:
+                    if attempt == 2:
+                        raise
+                    time.sleep(2 ** attempt)  # Exponential backoff    
                 
     def _rate_limited_request(self, url, params=None, headers=None):  # Add headers parameter
         """Handle NCBI rate limits with exponential backoff"""
