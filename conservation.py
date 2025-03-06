@@ -13,7 +13,7 @@ class ConservationAnalyzer:
     
     def __init__(self, window_size: int = 30):
         self.window_size = window_size
-        self.min_conservation = 0.8
+        self.min_conservation = 0.7
 
     def calculate_jsd(self, aligned_file: Path) -> List[float]:
         # Add alignment validation
