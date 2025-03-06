@@ -65,7 +65,7 @@ def main():
         # Alignment
         print("\n🧬 Starting alignment...")
         aligned_file = aligner.align(valid_genomes, Path("alignments"))
-        print(f"🔍 Alignment saved to: {aligned_file}")
+        print(f"🔍 Alignment saved to: {aligned_file}")  # Now works
 
         # Conservation analysis
         print("\n🔎 Identifying conserved regions...")
