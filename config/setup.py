@@ -18,6 +18,7 @@ setup(
     package_data={
         'guidex': ['../config/cas13_subtypes.yaml']  # Include config
     },
+    include_package_data=True,
     python_requires=">=3.8",   # Specify Python version
     entry_points={             # Optional but useful
         "console_scripts": [
