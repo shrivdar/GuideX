@@ -75,6 +75,7 @@ def main():
         print(f"✅ Found {len(conserved_regions)} conserved regions")
 
         # Visualization
+        Path("results").mkdir(exist_ok=True)  # Ensure dir exists
         conservator.plot_conservation(jsd_scores, Path("results/conservation.html"))
 
         # gRNA Design
