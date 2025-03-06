@@ -46,32 +46,31 @@ class AlignmentEngine:
         return self._run_alignment(input_path, output_dir)
 
     def _run_alignment(self, input_path: Path, output_dir: Path) -> Path:
-        """Execute MUSCLE alignment with optimized parameters"""
+        """Simplified MUSCLE command"""
         output_path = output_dir / "ALIGNMENT_OUT.fasta"
-        
-        cmd = [
-            "muscle",
-            "-align", str(input_path),
-            "-output", str(output_path),
-            "-maxiters", "2",
-            "-diags",
-            "-sv",
-            "-threads", str(self.max_threads)
-        ]
-        
+    
+        # Basic command for nucleotide alignment
+        cmd = f"muscle -in {input_path} -out {output_path} -threads {self.max_threads}"
+    
         try:
-            result = subprocess.run(
+            subprocess.run(
                 cmd,
+                shell=True,
+                check=True,
+                executable="/bin/bash",
+                timeout=300,
                 capture_output=True,
-                text=True,
-                check=True
+                text=True
             )
-            if result.stderr:
-                logger.warning(f"MUSCLE warnings: {result.stderr}")
             return output_path
         except subprocess.CalledProcessError as e:
-            logger.error(f"Alignment failed: {str(e)}")
-            raise RuntimeError(f"MUSCLE error: {str(e)}")
+            logger.error(f"MUSCLE failed: {e.stderr}")
+            raise RuntimeError(f"""
+                MUSCLE alignment failed. Verify input file:
+                {input_path}
+                Command: {cmd}
+                Error: {e.stderr}
+            """)
 
     def _validate_input(self, genomes: List[SeqRecord]):
         """Validate input genome sequences"""
