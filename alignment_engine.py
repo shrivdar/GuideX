@@ -46,31 +46,44 @@ class AlignmentEngine:
         return self._run_alignment(input_path, output_dir)
 
     def _run_alignment(self, input_path: Path, output_dir: Path) -> Path:
-        """Simplified MUSCLE command"""
+        """Robust MUSCLE alignment with proper syntax"""
         output_path = output_dir / "ALIGNMENT_OUT.fasta"
     
-        # Basic command for nucleotide alignment
-        cmd = f"muscle -align {input_path} -output {output_path} -threads {self.max_threads}"
+        # MUSCLE v5+ command structure
+        cmd = [
+            "muscle",
+            "-in", str(input_path.resolve()),
+            "-out", str(output_path),
+            "-threads", str(self.max_threads),
+            "-maxiters", "2",  # Faster alignment
+            "-diags",  # Use diagonal optimization
+            "-sv",  # Sparse vertical optimization
+            "-quiet"  # Suppress verbose output
+        ]
     
         try:
-            subprocess.run(
+            result = subprocess.run(
                 cmd,
-                shell=True,
                 check=True,
-                executable="/bin/bash",
                 timeout=300,
                 capture_output=True,
                 text=True
             )
             return output_path
         except subprocess.CalledProcessError as e:
-            logger.error(f"MUSCLE failed: {e.stderr}")
-            raise RuntimeError(f"""
-                MUSCLE alignment failed. Verify input file:
-                {input_path}
-                Command: {cmd}
-                Error: {e.stderr}
-            """)
+            error_msg = (
+                f"MUSCLE alignment failed\n"
+                f"Command: {' '.join(cmd)}\n"
+                f"Status: {e.returncode}\n"
+                f"Error: {e.stderr.strip()}"
+            )
+            logger.error(error_msg)
+            output_path.unlink(missing_ok=True)  # Clean failed output
+            raise RuntimeError(error_msg)
+        except Exception as e:
+            logger.error(f"Unexpected alignment error: {str(e)}")
+            output_path.unlink(missing_ok=True)
+            raise
 
     def _validate_input(self, genomes: List[SeqRecord]):
         """Validate input genome sequences"""
