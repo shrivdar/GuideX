@@ -46,44 +46,28 @@ class AlignmentEngine:
         return self._run_alignment(input_path, output_dir)
 
     def _run_alignment(self, input_path: Path, output_dir: Path) -> Path:
-        """Robust MUSCLE alignment with proper syntax"""
         output_path = output_dir / "ALIGNMENT_OUT.fasta"
     
-        # MUSCLE v5+ command structure
+        # Simplified MUSCLE v5 command (remove -diags/-sv)
         cmd = [
             "muscle",
             "-in", str(input_path.resolve()),
             "-out", str(output_path),
             "-threads", str(self.max_threads),
-            "-maxiters", "2",  # Faster alignment
-            "-diags",  # Use diagonal optimization
-            "-sv",  # Sparse vertical optimization
-            "-quiet"  # Suppress verbose output
+            "-maxiters", "1",  # Faster execution
+            "-quiet"
         ]
     
         try:
-            result = subprocess.run(
-                cmd,
-                check=True,
-                timeout=300,
-                capture_output=True,
-                text=True
-            )
+            subprocess.run(cmd, check=True, capture_output=True, text=True, timeout=300)
             return output_path
         except subprocess.CalledProcessError as e:
-            error_msg = (
-                f"MUSCLE alignment failed\n"
-                f"Command: {' '.join(cmd)}\n"
-                f"Status: {e.returncode}\n"
-                f"Error: {e.stderr.strip()}"
-            )
-            logger.error(error_msg)
-            output_path.unlink(missing_ok=True)  # Clean failed output
-            raise RuntimeError(error_msg)
-        except Exception as e:
-            logger.error(f"Unexpected alignment error: {str(e)}")
-            output_path.unlink(missing_ok=True)
-            raise
+            logger.error(f"MUSCLE failed: {e.stderr}")
+            raise RuntimeError(f"""
+                MUSCLE Error: {e.stderr}
+                Verify input file with: cat {input_path}
+                Test manually: {' '.join(cmd)}
+            """)
 
     def _validate_input(self, genomes: List[SeqRecord]):
         """Validate input genome sequences"""
