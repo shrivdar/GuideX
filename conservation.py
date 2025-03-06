@@ -16,53 +16,86 @@ class ConservationAnalyzer:
         self.min_conservation = 0.7
 
     def calculate_jsd(self, aligned_file: Path) -> List[float]:
-        # Add alignment validation
+        """Calculate Jensen-Shannon Divergence scores for aligned sequences"""
+        # Validate alignment file
         if not aligned_file.exists():
-            raise FileNotFoundError(f"{aligned_file} missing!")
+            raise FileNotFoundError(f"Alignment file missing: {aligned_file}")
+        
+        try:
+            # Load and validate alignment
+            msa = self._load_alignment(aligned_file)
+            if len(msa) < 2:
+                raise ValueError("At least 2 sequences required for conservation analysis")
             
-        with open(aligned_file) as f:
-            if ">Local_HA_1" not in f.read():  # Check for known local IDs
-                raise ValueError("Alignment file appears corrupt")
-
-        # Lower JSD threshold to 0.7
-        conserved_regions = [(i, i+30) for i, score in enumerate(jsd_scores) if score > 0.7]
+            # Calculate conservation scores
+            logger.info(f"Analyzing conservation for {len(msa)} sequences")
+            return self._windowed_analysis(msa)
+            
+        except Exception as e:
+            logger.error(f"Conservation analysis failed: {str(e)}")
+            raise
 
     def plot_conservation(self, scores: List[float], output_file: Path) -> None:
         """Generate interactive conservation plot"""
-        fig = px.line(
-            x=list(range(len(scores))),
-            y=scores,
-            labels={"x": "Position", "y": "Conservation"},
-            title=f"Conservation Profile (Window={self.window_size})"
-        )
-        fig.write_html(str(output_file))
+        try:
+            fig = px.line(
+                x=list(range(len(scores))[:len(scores)//self.window_size*self.window_size],
+                y=scores,
+                labels={"x": "Position", "y": "Conservation"},
+                title=f"Conservation Profile (Window={self.window_size})"
+            )
+            output_file.parent.mkdir(parents=True, exist_ok=True)
+            fig.write_html(str(output_file))
+            logger.info(f"Saved conservation plot to {output_file}")
+        except Exception as e:
+            logger.error(f"Failed to generate conservation plot: {str(e)}")
+            raise
 
     def _load_alignment(self, path: Path) -> TabularMSA:
         """Load and validate alignment file"""
-        if not path.exists():
-            raise FileNotFoundError(f"Alignment file missing: {path}")
-        return TabularMSA.read(path, constructor=DNA)
+        logger.debug(f"Loading alignment from {path}")
+        msa = TabularMSA.read(str(path), constructor=DNA)
+        
+        # Validate alignment content
+        if len(msa) == 0:
+            raise ValueError("Empty alignment file")
+        if any(len(seq) != len(msa[0]) for seq in msa):
+            raise ValueError("Inconsistent sequence lengths in alignment")
+            
+        return msa
 
     def _windowed_analysis(self, msa: TabularMSA) -> List[float]:
         """Sliding window conservation scoring"""
         scores = []
-        for i in range(0, len(msa[0]), self.window_size):
-            window = msa[:, i:i+self.window_size]
-            window_score = self._calculate_window_jsd(window)
-            scores.extend([window_score] * self.window_size)
+        seq_length = len(msa[0])
+        
+        for i in range(0, seq_length - self.window_size + 1):
+            window_scores = []
+            for j in range(i, min(i+self.window_size, seq_length)):
+                position_scores = []
+                for seq1 in msa:
+                    for seq2 in msa:
+                        if seq1 != seq2:
+                            p = self._position_frequencies(seq1[j])
+                            q = self._position_frequencies(seq2[j])
+                            position_scores.append(jensenshannon(p, q) ** 2)
+                window_scores.append(np.mean(position_scores) if position_scores else 0.0)
+            scores.extend(window_scores)
+            
         return scores
 
-    def _calculate_window_jsd(self, window) -> float:
-        """Window-specific JSD calculation"""
-        if window.shape[1] < self.window_size:
-            return 0.0
+    def _position_frequencies(self, nucleotide: str) -> List[float]:
+        """Calculate normalized nucleotide frequencies at a position"""
+        valid_nt = {'A', 'C', 'G', 'T'}
+        counts = {
+            'A': 0.25,  # Pseudocounts to avoid zero probabilities
+            'C': 0.25,
+            'G': 0.25,
+            'T': 0.25
+        }
+        
+        if nucleotide.upper() in valid_nt:
+            counts[nucleotide.upper()] += 1.0
             
-        freq_matrix = []
-        for seq in window:
-            counts = {nt: seq.frequencies().get(nt, 0) for nt in 'ACGT'}
-            freq_matrix.append([counts['A'], counts['C'], counts['G'], counts['T']])
-            
-        return np.mean([
-            jensenshannon(freq_matrix[0], freq) ** 2
-            for freq in freq_matrix[1:]
-        ]) if len(freq_matrix) > 1 else 0.0
+        total = sum(counts.values())
+        return [v/total for v in counts.values()]
