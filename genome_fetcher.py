@@ -94,8 +94,8 @@ class GenomeFetcher:
         cmd = [
             self.CLI_PATH, "summary", "genome", "taxon",
             organism,
-            "--assembly-level", "all",
-            "--assembly-source", "all",
+            "--assembly-level", "chromosome,complete",  # Valid comma-separated values
+            "--assembly-source", "refseq",  # More reliable than 'all'
             "--annotated",
             "--limit", str(limit),
             "--as-json-lines"
