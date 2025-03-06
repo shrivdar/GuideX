@@ -28,6 +28,8 @@ LOCAL_GENOMES = [
     )
 ]
 
+# ... (keep existing imports and LOCAL_GENOMES) ...
+
 def main():
     try:
         # Clear previous runs
@@ -45,10 +47,10 @@ def main():
         try:
             print("🕵️ Attempting NCBI Datasets API v2 fetch...")
             genomes = fetcher.fetch_genomes(
-                target="Influenza A virus (H1N1) hemagglutinin",  # Specific gene + subtype
-                genome_type="protein",  # Switch to protein accessions
+                target="Influenza A virus (H1N1) hemagglutinin",
+                genome_type="genome",  # Changed from "protein" to "genome"
                 limit=5,
-                exclude_partial=True  # Add this if present in your GenomeFetcher class
+                exclude_partial=True
             )
             if not genomes:
                 raise RuntimeError("NCBI returned 0 genomes")
@@ -66,20 +68,35 @@ def main():
         # Alignment
         print("\n🧬 Starting alignment...")
         aligned_file = aligner.align(valid_genomes, Path("alignments"))
-        print(f"🔍 Alignment saved to: {aligned_file}")  # Now works
+        print(f"🔍 Alignment saved to: {aligned_file}")
 
-        # Conservation analysis
+        # Conservation analysis with fallback thresholds
         print("\n🔎 Identifying conserved regions...")
         jsd_scores = conservator.calculate_jsd(aligned_file)
+        
+        # First attempt with strict threshold
         conserved_regions = [(i, i+30) for i, score in enumerate(jsd_scores) if score > 0.8]
+        
+        # Fallback to relaxed threshold if none found
+        if not conserved_regions:
+            print("⚠️ No regions at 0.8 JSD - trying 0.6 threshold")
+            conserved_regions = [(i, i+30) for i, score in enumerate(jsd_scores) if score > 0.6]
+            
+        if not conserved_regions:
+            raise RuntimeError(f"No conserved regions found (max JSD {max(jsd_scores):.2f})")
+            
         print(f"✅ Found {len(conserved_regions)} conserved regions")
 
-        # Visualization
-        Path("results").mkdir(exist_ok=True)  # Ensure dir exists
+        # Visualization with directory check
+        Path("results").mkdir(parents=True, exist_ok=True)
         conservator.plot_conservation(jsd_scores, Path("results/conservation.html"))
+        print("📊 Conservation plot generated")
 
-        # gRNA Design
+        # gRNA Design with empty check
         print("\n🔬 Designing Cas13 gRNAs...")
+        if not conserved_regions:
+            raise ValueError("No conserved regions for gRNA design")
+            
         grnas = designer.design(str(valid_genomes[0].seq), conserved_regions)
         
         # Output results
@@ -89,7 +106,6 @@ def main():
 
         # Save outputs
         output_dir = Path("results")
-        output_dir.mkdir(exist_ok=True)
         (output_dir / "grnas.txt").write_text("\n".join(g['spacer'] for g in grnas))
         print(f"\n📁 Results saved to {output_dir}/")
 
