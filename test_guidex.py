@@ -1,5 +1,7 @@
 from Bio.SeqRecord import SeqRecord
 from Bio.Seq import Seq
+from Bio import BiopythonDeprecationWarning
+warnings.simplefilter('ignore', BiopythonDeprecationWarning)
 from pathlib import Path
 import sys
 import os
@@ -7,6 +9,7 @@ import shutil
 import importlib
 sys.path.insert(0, str(Path(__file__).parent))
 importlib.invalidate_caches()
+import warnings
 from guidex.genome_fetcher import GenomeFetcher
 from guidex.conservation import ConservationAnalyzer
 from alignment_engine import AlignmentEngine
