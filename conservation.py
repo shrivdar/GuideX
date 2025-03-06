@@ -16,9 +16,16 @@ class ConservationAnalyzer:
         self.min_conservation = 0.8
 
     def calculate_jsd(self, aligned_file: Path) -> List[float]:
-        """Calculate Jensen-Shannon Divergence scores"""
-        msa = self._load_alignment(aligned_file)
-        return self._windowed_analysis(msa)
+        # Add alignment validation
+        if not aligned_file.exists():
+            raise FileNotFoundError(f"{aligned_file} missing!")
+            
+        with open(aligned_file) as f:
+            if ">Local_HA_1" not in f.read():  # Check for known local IDs
+                raise ValueError("Alignment file appears corrupt")
+
+        # Lower JSD threshold to 0.7
+        conserved_regions = [(i, i+30) for i, score in enumerate(jsd_scores) if score > 0.7]
 
     def plot_conservation(self, scores: List[float], output_file: Path) -> None:
         """Generate interactive conservation plot"""
