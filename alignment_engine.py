@@ -45,29 +45,37 @@ class AlignmentEngine:
         
         return self._run_alignment(input_path, output_dir)
 
-    def _run_alignment(self, input_path: Path, output_dir: Path) -> Path:
-        output_path = output_dir / "ALIGNMENT_OUT.fasta"
-    
-        # Simplified MUSCLE v5 command (remove -diags/-sv)
-        cmd = [
-            "muscle",
-            "-in", str(input_path.resolve()),
-            "-out", str(output_path),
-            "-threads", str(self.max_threads),
-            "-maxiters", "1",  # Faster execution
-            "-quiet"
-        ]
-    
+    def run_muscle_alignment(input_file, output_file):
+        """Run MUSCLE alignment with corrected syntax."""
         try:
-            subprocess.run(cmd, check=True, capture_output=True, text=True, timeout=300)
-            return output_path
+            # Check if input file exists and isn't empty
+            if not os.path.exists(input_file):
+                raise FileNotFoundError(f"Input file {input_file} not found!")
+            if os.path.getsize(input_file) == 0:
+                raise ValueError(f"Input file {input_file} is empty!")
+
+            # Build the corrected command
+            command = [
+                "muscle",
+                "-align", input_file,
+                "-output", output_file
+            ]
+
+            # Run the command
+            result = subprocess.run(
+                command,
+                check=True,
+                capture_output=True,
+                text=True
+            )
+
+            # Log success
+            logger.info("MUSCLE alignment completed successfully")
+            return output_file
+
         except subprocess.CalledProcessError as e:
-            logger.error(f"MUSCLE failed: {e.stderr}")
-            raise RuntimeError(f"""
-                MUSCLE Error: {e.stderr}
-                Verify input file with: cat {input_path}
-                Test manually: {' '.join(cmd)}
-            """)
+            logger.error(f"MUSCLE failed:\n{e.stderr}")
+            raise RuntimeError("MUSCLE alignment failed")
 
     def _validate_input(self, genomes: List[SeqRecord]):
         """Validate input genome sequences"""
