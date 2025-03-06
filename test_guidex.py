@@ -1,5 +1,4 @@
 from Bio.SeqRecord import SeqRecord
-from Bio.Seq import Seq
 from pathlib import Path
 import sys
 import os
@@ -12,7 +11,6 @@ from guidex.conservation import ConservationAnalyzer
 from guidex.alignment_engine import AlignmentEngine
 from guidex.core import GuideXGrnaDesigner
 
-# Valid local genomes meeting NCBI v2 criteria
 LOCAL_GENOMES = [
     SeqRecord(
         Seq("ATGCGATAGCATCGACTAGCATGACGTACGTACGTACGTACGTACGTACGTACGTA" * 100),
@@ -32,73 +30,50 @@ def main():
         shutil.rmtree("alignments", ignore_errors=True)
         shutil.rmtree("results", ignore_errors=True)
 
-        # 1. Initialize fetcher
+        # Initialize components
         fetcher = GenomeFetcher(api_key=os.getenv("NCBI_API_KEY_2025"))
+        aligner = AlignmentEngine(max_threads=8)
+        conservator = ConservationAnalyzer(window_size=30)
+        designer = GuideXGrnaDesigner(subtype="LwaCas13a")
 
-        # 2. Attempt NCBI fetch
+        # Genome acquisition
         genomes = []
-        try:  # ← Proper 4-space indent
+        try:
             print("🕵️ Attempting NCBI Datasets API v2 fetch...")
             genomes = fetcher.fetch_genomes(
                 target="Influenza A virus",
                 genome_type="refseq",
                 limit=5
             )
-        
             if not genomes:
-                raise RuntimeError("NCBI returned 0 genomes (check query parameters)")
-        
-            print(f"✅ Retrieved {len(genomes)} NCBI genomes")  # ← Inside try
-
-        except Exception as e:  # ← Aligned with inner try
+                raise RuntimeError("NCBI returned 0 genomes")
+            print(f"✅ Retrieved {len(genomes)} NCBI genomes")
+        except Exception as e:
             print(f"🔴 NCBI Error: {e}")
             print("🔄 Falling back to local genomes")
             genomes = LOCAL_GENOMES
 
-        # 3. Modern sequence validation
-        valid_genomes = []
-        for g in genomes:
-            try:
-                # Convert to string for safe gap removal
-                seq_str = str(g.seq).upper().replace("-", "")
-                seq = Seq(seq_str)
-                
-                # Validate length and content
-                if 5000 <= len(seq) <= 15000 and len(seq_str) == len(seq):
-                    valid_genomes.append(SeqRecord(
-                        seq,
-                        id=g.id,
-                        description=f"Validated | {len(seq)}bp"
-                    ))
-                    print(f"🧬 Validated {g.id} ({len(seq)} bp)")
-                else:
-                    print(f"⚠️ Excluded {g.id} (invalid length: {len(seq)} bp)")
-            except Exception as e:
-                print(f"🚨 Processing Error: {e}")
-
+        # Sequence validation
+        valid_genomes = [g for g in genomes if 5000 <= len(g.seq) <= 15000]
         if len(valid_genomes) < 2:
             raise ValueError(f"Only {len(valid_genomes)} valid genomes (need ≥2)")
-        
-        # 4. Alignment and analysis
-        print("\n🧬 Starting conservation pipeline...")
-        conservator = ConservationAnalyzer(window_size=30)
-        
-        # Run alignment
-        aligned_file = conservator.align_genomes(valid_genomes, Path("alignments"))
+            
+        # Alignment
+        print("\n🧬 Starting alignment...")
+        aligned_file = aligner.align(valid_genomes, Path("alignments"))
         print(f"🔍 Alignment saved to: {aligned_file}")
 
         # Conservation analysis
         print("\n🔎 Identifying conserved regions...")
         jsd_scores = conservator.calculate_jsd(aligned_file)
         conserved_regions = [(i, i+30) for i, score in enumerate(jsd_scores) if score > 0.8]
-        
-        if not conserved_regions:
-            raise ValueError("No conserved regions found!")
         print(f"✅ Found {len(conserved_regions)} conserved regions")
 
-        # 5. gRNA Design
+        # Visualization
+        conservator.plot_conservation(jsd_scores, Path("results/conservation.html"))
+
+        # gRNA Design
         print("\n🔬 Designing Cas13 gRNAs...")
-        designer = GuideXGrnaDesigner(subtype="LwaCas13a")
         grnas = designer.design(str(valid_genomes[0].seq), conserved_regions)
         
         # Output results
@@ -106,7 +81,7 @@ def main():
         for i, grna in enumerate(grnas[:5], 1):
             print(f"{i}. {grna['spacer']} (pos {grna['start']}-{grna['end']})")
 
-        # Save results
+        # Save outputs
         output_dir = Path("results")
         output_dir.mkdir(exist_ok=True)
         (output_dir / "grnas.txt").write_text("\n".join(g['spacer'] for g in grnas))
@@ -115,9 +90,9 @@ def main():
     except Exception as e:
         print(f"\n❌ Pipeline Error: {e}")
         print("💡 Debug Checklist:")
-        print("1. Verify NCBI_API_KEY environment variable")
-        print("2. Check 'alignments/MAFFT_IN.fasta' exists")
-        print("3. Test manual alignment: mafft --auto alignments/MAFFT_IN.fasta")
+        print("1. Verify NCBI_API_KEY_2025 environment variable")
+        print("2. Check MUSCLE installation: muscle -version")
+        print("3. Inspect input files in alignments/ directory")
         sys.exit(1)
 
 if __name__ == "__main__":
