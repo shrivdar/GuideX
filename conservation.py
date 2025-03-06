@@ -1,7 +1,7 @@
 import numpy as np
 from pathlib import Path
 from typing import List
-from scikit_bio import DNA, TabularMSA
+from skbio import DNA, TabularMSA
 from scipy.spatial.distance import jensenshannon
 import plotly.express as px
 from guidex.utils.logger import setup_logger
