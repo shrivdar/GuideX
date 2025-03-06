@@ -26,9 +26,11 @@ class AlignmentEngine:
                 text=True,
                 check=True
             )
-            if "MUSCLE v5" not in result.stdout:
+            # Check if output contains "muscle 5.x.x"
+            if "muscle 5" in result.stdout:
+                return "muscle"
+            else:
                 raise RuntimeError("Requires MUSCLE v5+")
-            return "muscle"
         except Exception as e:
             logger.error(f"Aligner verification failed: {str(e)}")
             raise
