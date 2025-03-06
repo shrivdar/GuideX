@@ -1,3 +1,5 @@
+
+Copy
 from setuptools import setup, find_packages
 
 setup(
@@ -7,13 +9,17 @@ setup(
     install_requires=[
         "biopython>=1.79",
         "scikit-bio>=0.5.6", 
-        "numpy>=1.21.0",       # Explicitly add numpy
+        "numpy>=1.21.0",
         "pandas>=1.3.5",
         "plotly>=5.10.0",
-        "requests>=2.26.0",    # Add missing dependency
-        "scipy>=1.7.0",        # Add missing dependency
+        "requests>=2.26.0",
+        "scipy>=1.7.0",
         "pyyaml>=6.0",
+        "importlib-resources>=5.4.0",  # Added for config access
     ],
+    package_data={
+        'guidex': ['../config/cas13_subtypes.yaml']  # Include config
+    },
     python_requires=">=3.8",   # Specify Python version
     entry_points={             # Optional but useful
         "console_scripts": [
