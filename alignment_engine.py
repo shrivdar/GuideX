@@ -76,6 +76,26 @@ class AlignmentEngine:
         except subprocess.CalledProcessError as e:
             logger.error(f"MUSCLE failed:\n{e.stderr}")
             raise RuntimeError("MUSCLE alignment failed")
+            
+    def _run_alignment(self) -> None:
+        """Internal method to execute MUSCLE alignment."""
+        try:
+            # Updated MUSCLE command (matches your working manual test)
+            command = [
+                "muscle",
+                "-align", self.input_file,
+                "-output", self.output_file
+            ]
+            result = subprocess.run(
+                command,
+                check=True,
+                capture_output=True,
+                text=True
+            )
+            self.logger.info("MUSCLE alignment succeeded")
+        except subprocess.CalledProcessError as e:
+            self.logger.error(f"MUSCLE failed:\n{e.stderr}")
+            raise RuntimeError("Alignment failed")
 
     def _validate_input(self, genomes: List[SeqRecord]):
         """Validate input genome sequences"""
