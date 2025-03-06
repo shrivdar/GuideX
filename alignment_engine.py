@@ -9,6 +9,7 @@ from guidex.utils.logger import setup_logger
 
 logger = setup_logger(__name__)
 
+
 class AlignmentEngine:
     """High-performance genome alignment engine using MUSCLE"""
     
@@ -46,21 +47,27 @@ class AlignmentEngine:
         """Execute MUSCLE alignment with optimized parameters"""
         output_path = output_dir / "ALIGNMENT_OUT.fasta"
         
-        cmd = MuscleCommandline(
-            input=str(input_path.resolve()),
-            out=str(output_path),
-            maxiters=2,
-            diags=True,
-            sv=True,
-            threads=self.max_threads
-        )
+        cmd = [
+            "muscle",
+            "-align", str(input_path),
+            "-output", str(output_path),
+            "-maxiters", "2",
+            "-diags",
+            "-sv",
+            "-threads", str(self.max_threads)
+        ]
         
         try:
-            stdout, stderr = cmd()
-            if stderr:
-                logger.warning(f"MUSCLE warnings: {stderr}")
+            result = subprocess.run(
+                cmd,
+                capture_output=True,
+                text=True,
+                check=True
+            )
+            if result.stderr:
+                logger.warning(f"MUSCLE warnings: {result.stderr}")
             return output_path
-        except Exception as e:
+        except subprocess.CalledProcessError as e:
             logger.error(f"Alignment failed: {str(e)}")
             raise RuntimeError(f"MUSCLE error: {str(e)}")
 
