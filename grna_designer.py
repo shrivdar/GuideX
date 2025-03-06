@@ -21,7 +21,7 @@ class GuideXGrnaDesigner:
 
     def _load_config(self, subtype: str) -> Dict:
         """Load parameters from YAML config."""
-        config_path = Path(__file__).parent.parent / "config/cas13_subtypes.yaml"
+        config_path = Path(__file__).parent.parent.parent.parent / "config/cas13_subtypes.yaml"
         with open(config_path, "r") as f:
             config = yaml.safe_load(f)
         return config.get(subtype, config["LwaCas13a"])  # Fallback to default
