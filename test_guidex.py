@@ -8,7 +8,7 @@ sys.path.insert(0, str(Path(__file__).parent))
 importlib.invalidate_caches()
 from guidex.genome_fetcher import GenomeFetcher
 from guidex.conservation import ConservationAnalyzer
-from guidex.alignment_engine import AlignmentEngine
+from alignment_engine import AlignmentEngine
 from guidex.core import GuideXGrnaDesigner
 
 LOCAL_GENOMES = [
