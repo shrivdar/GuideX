@@ -1,101 +1,183 @@
 import re
-import yaml
-import tempfile
-from pathlib import Path
-from typing import List, Dict
-from Bio.Seq import Seq
+import logging
 import subprocess
-from importlib.resources import files
-from guidex.utils.logger import setup_logger
-from guidex.utils.exceptions import GrnaDesignError
+from pathlib import Path
+from typing import List, Dict, Tuple, Generator
+from concurrent.futures import ThreadPoolExecutor
+import yaml
+from Bio.Seq import Seq
+from pydantic import BaseModel, ValidationError, confloat, conint
+from dataclasses import dataclass
 
-logger = setup_logger(__name__)
+logger = logging.getLogger(__name__)
 
-class GuideXGrnaDesigner:
-    """Design Cas13 gRNAs with subtype-specific rules."""
+# ----------------------
+# Configuration Models
+# ----------------------
+
+class Cas13Config(BaseModel):
+    """Pydantic model for configuration validation"""
+    spacer_length: conint(ge=20, le=30) = 28
+    gc_min: confloat(ge=0.0, le=1.0) = 0.4
+    gc_max: confloat(ge=0.0, le=1.0) = 0.6
+    mfe_threshold: float = -2.5
+    homopolymer_max: conint(ge=3, le=6) = 3
+    batch_size: conint(ge=1, le=100) = 50
+    max_workers: conint(ge=1, le=16) = 4
+
+# ----------------------
+# Data Structures
+# ----------------------
+
+@dataclass(frozen=True)
+class gRNACandidate:
+    """Immutable data structure for gRNA results"""
+    sequence: str
+    start: int
+    end: int
+    gc_content: float
+    mfe: float
+    passes_checks: bool
+
+# ----------------------
+# Core Designer Class
+# ----------------------
+
+class Cas13gRNADesigner:
+    """High-performance Cas13 gRNA designer with parallel MFE prediction"""
     
-    def __init__(self, subtype: str = "LwaCas13a"):
-        self.subtype = subtype
-        self.config = self._load_config()
-        self.spacer_length = self.config["spacer_length"]
+    def __init__(self, config_path: Path = Path("config/cas13_rules.yaml")):
+        self.config = self._load_and_validate_config(config_path)
+        self._verify_rnafold()
 
-    def _load_config(self) -> Dict:
-        """Load parameters from package-installed YAML config"""
-        try:
-            config_path = files('guidex').joinpath('../config/cas13_subtypes.yaml')
-            with open(config_path, "r") as f:
-                config = yaml.safe_load(f)
-            return config.get(self.subtype, config["LwaCas13a"])
-        except Exception as e:
-            logger.error(f"Config load failed: {e}")
-            raise GrnaDesignError("Missing/invalid config file")
-
-    def _rnafold_mfe(self, spacer: str) -> float:
-        """Predict MFE using RNAfold with tempfile cleanup"""
-        try:
-            with tempfile.TemporaryDirectory() as tmpdir:
-                input_path = Path(tmpdir) / "input.fa"
-                output_path = Path(tmpdir) / "output.txt"
-                
-                with open(input_path, "w") as f:
-                    f.write(f">spacer\n{spacer}")
-                
-                subprocess.run(
-                    f"RNAfold --infile={input_path} --outfile={output_path} --noPS",
-                    shell=True,
-                    check=True,
-                    capture_output=True
+    def design(self, sequence: str, regions: List[Tuple[int, int]]) -> List[gRNACandidate]:
+        """Main design pipeline with parallel processing"""
+        sequence = sequence.upper()
+        candidates = self._generate_candidates(sequence, regions)
+        
+        with ThreadPoolExecutor(self.config.max_workers) as executor:
+            # Process in batches to balance memory/performance
+            batches = [
+                candidates[i:i+self.config.batch_size] 
+                for i in range(0, len(candidates), self.config.batch_size)
+            ]
+            processed = []
+            for batch in batches:
+                processed.extend(
+                    executor.map(self._process_single_grna, batch)
                 )
-                
-                with open(output_path, "r") as f:
-                    return float(f.readlines()[1].split()[-1].strip("()"))
-        except Exception as e:
-            logger.error(f"RNAfold failed: {e}")
-            raise GrnaDesignError(f"RNAfold error: {e.stderr.decode()}")
+        
+        return [
+            candidate for candidate in processed
+            if candidate.passes_checks
+        ]
 
-    def design(self, sequence: str, conserved_regions: List[tuple]) -> List[Dict]:
-        """Design gRNAs from conserved regions."""
-        grnas = []
-        for start, end in conserved_regions:
-            region_seq = str(sequence[start:end])
-            for i in range(0, len(region_seq) - self.spacer_length + 1):
-                spacer = region_seq[i:i+self.spacer_length]
-                if self._is_valid(spacer):
-                    grna_data = {
-                        "start": start + i,
-                        "end": start + i + self.spacer_length,
-                        "spacer": spacer,
-                        "gc": self._gc_content(spacer),
-                        "mfe": self._rnafold_mfe(spacer),
-                    }
-                    grnas.append(grna_data)
-        return grnas
+    # ----------------------
+    # Internal Methods
+    # ----------------------
 
-    def _is_valid(self, spacer: str) -> bool:
-        """Validate spacer against Cas13 rules."""
-        if not (self.config["gc_min"] <= self._gc_content(spacer) <= self.config["gc_max"]):
-            return False
-        if re.search(r"(.)\1{3}", spacer):  # Homopolymers (4+ repeats)
-            return False
-        if self._rnafold_mfe(spacer) > self.config["mfe_threshold"]:
-            return False
-        return True
-
-    def _gc_content(self, spacer: str) -> float:
-        return (spacer.count("G") + spacer.count("C")) / len(spacer)
-
-    def _rnafold_mfe(self, spacer: str) -> float:
-        """Predict minimum free energy (MFE) using RNAfold."""
+    def _load_and_validate_config(self, config_path: Path) -> Cas13Config:
+        """Load and validate YAML configuration"""
         try:
-            with open("temp.fa", "w") as f:
-                f.write(f">spacer\n{spacer}")
-            subprocess.run(
-                "RNAfold --infile=temp.fa --outfile=temp.out --noPS", 
-                shell=True, 
+            with open(config_path) as f:
+                raw_config = yaml.safe_load(f)
+            return Cas13Config(**raw_config)
+        except (FileNotFoundError, ValidationError, yaml.YAMLError) as e:
+            logger.error(f"Configuration error: {str(e)}")
+            raise ValueError("Invalid configuration") from e
+
+    def _verify_rnafold(self):
+        """Ensure RNAfold is installed and accessible"""
+        try:
+            result = subprocess.run(
+                ["RNAfold", "--version"],
+                capture_output=True,
+                text=True,
                 check=True
             )
-            with open("temp.out", "r") as f:
-                return float(f.readlines()[1].split()[-1].strip("()"))
+            if "ViennaRNA" not in result.stdout:
+                raise RuntimeError("RNAfold not properly installed")
         except Exception as e:
-            logger.error(f"RNAfold failed: {e}")
-            raise GrnaDesignError(f"RNAfold error: {e}")
+            logger.critical("RNAfold dependency missing")
+            raise
+
+    def _generate_candidates(self, sequence: str, regions: List[Tuple[int, int]]]) -> Generator[gRNACandidate, None, None]:
+        """Generate candidate gRNAs from conserved regions"""
+        for start, end in regions:
+            region_seq = sequence[start:end]
+            for i in range(len(region_seq) - self.config.spacer_length + 1):
+                spacer = region_seq[i:i+self.config.spacer_length]
+                gc = self._calculate_gc(spacer)
+                
+                yield gRNACandidate(
+                    sequence=spacer,
+                    start=start + i,
+                    end=start + i + self.config.spacer_length,
+                    gc_content=gc,
+                    mfe=0.0,
+                    passes_checks=self._validate_basic(spacer, gc)
+                )
+
+    def _process_single_grna(self, candidate: gRNACandidate) -> gRNACandidate:
+        """Process individual gRNA (MFE calculation + final validation)"""
+        if not candidate.passes_checks:
+            return candidate
+        
+        try:
+            mfe = self._calculate_mfe(candidate.sequence)
+            passes = self._validate_final(mfe)
+        except subprocess.CalledProcessError as e:
+            logger.warning(f"MFE calculation failed for {candidate.sequence}: {e.stderr}")
+            passes = False
+            mfe = 0.0
+
+        return gRNACandidate(
+            **{**vars(candidate), "mfe": mfe, "passes_checks": passes}
+        )
+
+    def _calculate_gc(self, spacer: str) -> float:
+        """Calculate GC content with vectorized operations"""
+        gc = spacer.count("G") + spacer.count("C")
+        return gc / len(spacer)
+
+    def _validate_basic(self, spacer: str, gc: float) -> bool:
+        """Fast pre-filter before MFE calculation"""
+        return all([
+            self.config.gc_min <= gc <= self.config.gc_max,
+            not re.search(r"(.)\1{%d}" % self.config.homopolymer_max, spacer)
+        ])
+
+    def _validate_final(self, mfe: float) -> bool:
+        """Post-MFE validation"""
+        return mfe < self.config.mfe_threshold
+
+    def _calculate_mfe(self, spacer: str) -> float:
+        """Calculate MFE using RNAfold with direct stdin/stdout"""
+        process = subprocess.run(
+            ["RNAfold", "--noPS"],
+            input=f">{spacer}\n{spacer}\n",
+            capture_output=True,
+            text=True,
+            check=True,
+            encoding="utf-8"
+        )
+        
+        # Extract MFE from RNAfold output
+        for line in process.stdout.split("\n"):
+            if spacer in line:
+                return float(line.split()[-1].strip("()"))
+        
+        raise ValueError(f"MFE parsing failed for {spacer}")
+
+# ----------------------
+# Exception Classes
+# ----------------------
+
+class GrnaDesignError(Exception):
+    """Base exception for gRNA design failures"""
+
+class InvalidSequenceError(GrnaDesignError):
+    """Raised when input sequence is invalid"""
+
+class ConfigurationError(GrnaDesignError):
+    """Raised for configuration issues"""
