@@ -37,66 +37,26 @@ class AlignmentEngine:
             raise
 
     def align(self, genomes: List[SeqRecord], output_dir: Path) -> Path:
-        """Optimized alignment workflow for large datasets"""
+        """Public alignment interface"""
         output_dir.mkdir(parents=True, exist_ok=True)
         self._validate_input(genomes)
-
+    
         input_path = output_dir / "INPUT.fasta"
-        self._write_chunked_fasta(genomes, input_path, chunk_size=10)
-        
+        self._write_chunked_fasta(genomes, input_path)
+    
+        # Call the corrected _run_alignment
         return self._run_alignment(input_path, output_dir)
 
-    def run_muscle_alignment(input_file, output_file):
-        """Run MUSCLE alignment with corrected syntax."""
-        try:
-            # Check if input file exists and isn't empty
-            if not os.path.exists(input_file):
-                raise FileNotFoundError(f"Input file {input_file} not found!")
-            if os.path.getsize(input_file) == 0:
-                raise ValueError(f"Input file {input_file} is empty!")
-
-            # Build the corrected command
-            command = [
-                "muscle",
-                "-align", input_file,
-                "-output", output_file
-            ]
-
-            # Run the command
-            result = subprocess.run(
-                command,
-                check=True,
-                capture_output=True,
-                text=True
-            )
-
-            # Log success
-            logger.info("MUSCLE alignment completed successfully")
-            return output_file
-
-        except subprocess.CalledProcessError as e:
-            logger.error(f"MUSCLE failed:\n{e.stderr}")
-            raise RuntimeError("MUSCLE alignment failed")
-            
-    def _run_alignment(self) -> None:
-        """Internal method to execute MUSCLE alignment."""
-        try:
-            # Updated MUSCLE command (matches your working manual test)
-            command = [
-                "muscle",
-                "-align", self.input_file,
-                "-output", self.output_file
-            ]
-            result = subprocess.run(
-                command,
-                check=True,
-                capture_output=True,
-                text=True
-            )
-            self.logger.info("MUSCLE alignment succeeded")
-        except subprocess.CalledProcessError as e:
-            self.logger.error(f"MUSCLE failed:\n{e.stderr}")
-            raise RuntimeError("Alignment failed")
+    def _run_alignment(self, input_file: Path, output_dir: Path) -> Path:  # ✅ Instance method
+        """Core alignment logic (called by align())"""
+        output_file = output_dir / "ALIGNMENT_OUT.fasta"
+        command = [
+        "muscle",
+            "-align", str(input_file),
+            "-output", str(output_file)
+        ]
+        subprocess.run(command, check=True)
+        return output_file
 
     def _validate_input(self, genomes: List[SeqRecord]):
         """Validate input genome sequences"""
