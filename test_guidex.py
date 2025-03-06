@@ -1,4 +1,5 @@
 from Bio.SeqRecord import SeqRecord
+from Bio.Seq import Seq
 from pathlib import Path
 import sys
 import os
