@@ -50,7 +50,7 @@ class AlignmentEngine:
         output_path = output_dir / "ALIGNMENT_OUT.fasta"
     
         # Basic command for nucleotide alignment
-        cmd = f"muscle -in {input_path} -out {output_path} -threads {self.max_threads}"
+        cmd = f"muscle -align {input_path} -output {output_path} -threads {self.max_threads}"
     
         try:
             subprocess.run(
