@@ -1,11 +1,11 @@
 import re
 import yaml
+import tempfile
 from pathlib import Path
 from typing import List, Dict
 from Bio.Seq import Seq
 import subprocess
-import sys
-sys.path.insert(0, "/Users/DarshShrivastava/GuideX_Fresh")
+from importlib.resources import files
 from guidex.utils.logger import setup_logger
 from guidex.utils.exceptions import GrnaDesignError
 
@@ -16,15 +16,42 @@ class GuideXGrnaDesigner:
     
     def __init__(self, subtype: str = "LwaCas13a"):
         self.subtype = subtype
-        self.config = self._load_config(subtype)
+        self.config = self._load_config()
         self.spacer_length = self.config["spacer_length"]
 
-    def _load_config(self, subtype: str) -> Dict:
-        """Load parameters from YAML config."""
-        config_path = Path(__file__).absolute().parent.parent.parent / "config/cas13_subtypes.yaml"
-        with open(config_path, "r") as f:
-            config = yaml.safe_load(f)
-        return config.get(subtype, config["LwaCas13a"])  # Fallback to default
+    def _load_config(self) -> Dict:
+        """Load parameters from package-installed YAML config"""
+        try:
+            config_path = files('guidex').joinpath('../config/cas13_subtypes.yaml')
+            with open(config_path, "r") as f:
+                config = yaml.safe_load(f)
+            return config.get(self.subtype, config["LwaCas13a"])
+        except Exception as e:
+            logger.error(f"Config load failed: {e}")
+            raise GrnaDesignError("Missing/invalid config file")
+
+    def _rnafold_mfe(self, spacer: str) -> float:
+        """Predict MFE using RNAfold with tempfile cleanup"""
+        try:
+            with tempfile.TemporaryDirectory() as tmpdir:
+                input_path = Path(tmpdir) / "input.fa"
+                output_path = Path(tmpdir) / "output.txt"
+                
+                with open(input_path, "w") as f:
+                    f.write(f">spacer\n{spacer}")
+                
+                subprocess.run(
+                    f"RNAfold --infile={input_path} --outfile={output_path} --noPS",
+                    shell=True,
+                    check=True,
+                    capture_output=True
+                )
+                
+                with open(output_path, "r") as f:
+                    return float(f.readlines()[1].split()[-1].strip("()"))
+        except Exception as e:
+            logger.error(f"RNAfold failed: {e}")
+            raise GrnaDesignError(f"RNAfold error: {e.stderr.decode()}")
 
     def design(self, sequence: str, conserved_regions: List[tuple]) -> List[Dict]:
         """Design gRNAs from conserved regions."""
