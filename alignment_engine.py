@@ -78,7 +78,3 @@ class AlignmentEngine:
                 for idx, rec in enumerate(chunk):
                     rec.id = f"Genome_{i+idx+1}"
                     SeqIO.write(rec, f, "fasta-2line")
-
-    def start(self) -> None:
-        """Public method to trigger alignment."""
-        self._run_alignment()  # Call the internal method
