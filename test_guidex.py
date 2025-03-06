@@ -1,6 +1,7 @@
 from Bio.SeqRecord import SeqRecord
 from Bio.Seq import Seq
 from Bio import BiopythonDeprecationWarning
+import warnings
 warnings.simplefilter('ignore', BiopythonDeprecationWarning)
 from pathlib import Path
 import sys
