@@ -45,9 +45,10 @@ def main():
         try:
             print("🕵️ Attempting NCBI Datasets API v2 fetch...")
             genomes = fetcher.fetch_genomes(
-                target="Influenza A virus",
-                genome_type="refseq",
-                limit=5
+                target="Influenza A virus (H1N1) hemagglutinin",  # Specific gene + subtype
+                genome_type="protein",  # Switch to protein accessions
+                limit=5,
+                exclude_partial=True  # Add this if present in your GenomeFetcher class
             )
             if not genomes:
                 raise RuntimeError("NCBI returned 0 genomes")
