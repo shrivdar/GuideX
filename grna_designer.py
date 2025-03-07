@@ -8,13 +8,15 @@ import yaml
 from Bio.Seq import Seq
 from pydantic import BaseModel, ValidationError, confloat, conint
 from dataclasses import dataclass
+from datetime import datetime
+from pydantic import BaseModel
+import json
+from typing import Optional
 
 logger = logging.getLogger(__name__)
 
-# ----------------------
-# Configuration Models
-# ----------------------
 
+# Configuration Models
 class Cas13Config(BaseModel):
     """Pydantic model for configuration validation"""
     spacer_length: conint(ge=20, le=30) = 28
@@ -25,10 +27,8 @@ class Cas13Config(BaseModel):
     batch_size: conint(ge=1, le=100) = 50
     max_workers: conint(ge=1, le=16) = 4
 
-# ----------------------
-# Data Structures
-# ----------------------
 
+# Data Structures
 @dataclass(frozen=True)
 class gRNACandidate:
     """Immutable data structure for gRNA results"""
@@ -39,10 +39,54 @@ class gRNACandidate:
     mfe: float
     passes_checks: bool
 
-# ----------------------
-# Core Designer Class
-# ----------------------
+class gRNAResult(BaseModel):
+    sequence: str
+    start: int
+    end: int
+    gc_content: float
+    mfe: float
+    offtargets: Optional[List[dict]] = None
+    timestamp: datetime = datetime.now()
 
+    @classmethod
+    def from_candidate(cls, candidate: gRNACandidate):
+        return cls(
+            sequence=candidate.sequence,
+            start=candidate.start,
+            end=candidate.end,
+            gc_content=candidate.gc_content,
+            mfe=candidate.mfe
+        )
+
+class ResultsHandler:
+    """Handles serialization/deserialization of results"""
+    
+    @staticmethod
+    def save_to_json(results: List[gRNACandidate], path: Path):
+        """Save results with full metadata"""
+        data = [gRNAResult.from_candidate(c).dict() for c in results]
+        with open(path, 'w') as f:
+            json.dump(data, f, indent=2, default=str)
+
+    @staticmethod
+    def load_from_json(path: Path) -> List[gRNACandidate]:
+        """Load results with validation"""
+        with open(path) as f:
+            raw = json.load(f)
+            
+        return [
+            gRNACandidate(
+                sequence=item['sequence'],
+                start=item['start'],
+                end=item['end'],
+                gc_content=item['gc_content'],
+                mfe=item['mfe'],
+                passes_checks=True
+            ) for item in raw
+        ]
+
+
+# Core Designer Class
 class Cas13gRNADesigner:
     """High-performance Cas13 gRNA designer with parallel MFE prediction"""
     
@@ -72,10 +116,8 @@ class Cas13gRNADesigner:
             if candidate.passes_checks
         ]
 
-    # ----------------------
-    # Internal Methods
-    # ----------------------
 
+    # Internal Methods
     def _load_and_validate_config(self, config_path: Path) -> Cas13Config:
         """Load and validate YAML configuration"""
         try:
@@ -169,10 +211,8 @@ class Cas13gRNADesigner:
         
         raise ValueError(f"MFE parsing failed for {spacer}")
 
-# ----------------------
-# Exception Classes
-# ----------------------
 
+# Exception Classes
 class GrnaDesignError(Exception):
     """Base exception for gRNA design failures"""
 
