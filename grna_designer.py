@@ -143,7 +143,7 @@ class Cas13gRNADesigner:
             logger.critical("RNAfold dependency missing")
             raise
 
-    def _generate_candidates(self, sequence: str, regions: List[Tuple[int, int]]]) -> Generator[gRNACandidate, None, None]:
+    def _generate_candidates(self, sequence: str, regions: List[Tuple[int, int]]) -> Generator[gRNACandidate, None, None]:
         """Generate candidate gRNAs from conserved regions"""
         for start, end in regions:
             region_seq = sequence[start:end]
