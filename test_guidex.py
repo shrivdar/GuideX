@@ -47,11 +47,12 @@ def main():
         genomes = []
         try:
             print("🕵️ Attempting NCBI Datasets API v2 fetch...")
-            genomes = fetcher.fetch_genomes(
-                target="Influenza A virus hemagglutinin",  # Broader search
-                genome_type="gene",  # More likely to find matches
-                limit=10,
-            )
+                genomes = fetcher.fetch_genomes(
+                    target="11320",  # Influenza A virus taxid
+                    gene_name="HA",  # Hemagglutinin
+                    genome_type="gene",
+                    limit=10
+                )
             if not genomes:
                 print("ℹ️ No genomes found - trying protein database")
                 genomes = fetcher.fetch_genomes(
@@ -84,7 +85,7 @@ def main():
         # Dynamic threshold adjustment
         max_jsd = max(jsd_scores) if jsd_scores else 0
         conserved_regions = []
-        thresholds = [0.8, 0.7, 0.6, max_jsd * 0.8]  # Adaptive final threshold
+        thresholds = [0.8, 0.7, 0.6, max(0.3, max_jsd * 0.9)]  # More conservative
         
         for threshold in thresholds:
             conserved_regions = [(i, i+30) for i, score in enumerate(jsd_scores) if score > threshold]
