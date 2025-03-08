@@ -41,7 +41,7 @@ def main():
         fetcher = GenomeFetcher(api_key=os.getenv("NCBI_API_KEY_2025"))
         aligner = AlignmentEngine(max_threads=8)
         conservator = ConservationAnalyzer(window_size=30)
-        designer = GuideXGrnaDesigner(subtype="LwaCas13a")
+        designer = Cas13gRNADesigner()
 
         # Genome acquisition
         genomes = []
