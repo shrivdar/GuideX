@@ -136,20 +136,22 @@ class Cas13gRNADesigner:
         """Ensure RNAfold is installed and accessible"""
         rna_fold_path = "/opt/homebrew/Caskroom/miniforge/base/bin/RNAfold"
         try:
+            # Test if RNAfold executes properly
             result = subprocess.run(
                 [rna_fold_path, "--version"],
                 capture_output=True,
                 text=True,
-                check=True
+                check=True,
+                env=os.environ
             )
             if "ViennaRNA" not in result.stdout:
                 raise RuntimeError("RNAfold not properly installed")
             logger.info(f"RNAfold found at: {rna_fold_path}")
         except FileNotFoundError:
-            logger.critical(f"RNAfold not found at expected path: {rna_fold_path}")
+            logger.critical(f"RNAfold executable not found at: {rna_fold_path}")
             raise
         except subprocess.CalledProcessError as e:
-            logger.critical(f"RNAfold version check failed with error: {e.stderr}")
+            logger.critical(f"RNAfold version check failed: {e.stderr}")
             raise
         except Exception as e:
             logger.critical(f"Unexpected error verifying RNAfold: {str(e)}")
@@ -205,18 +207,35 @@ class Cas13gRNADesigner:
         """Post-MFE validation"""
         return mfe < self.config.mfe_threshold
 
+
     def _calculate_mfe(self, spacer: str) -> float:
         """Calculate MFE using RNAfold with direct stdin/stdout"""
         rna_fold_path = "/opt/homebrew/Caskroom/miniforge/base/bin/RNAfold"
         try:
+            # Prepare input for RNAfold
+            input_data = f">{spacer}\n{spacer}\n"
+            
+            # Execute RNAfold with full path and environment
             process = subprocess.run(
                 [rna_fold_path, "--noPS"],
-                input=f">{spacer}\n{spacer}\n",
+                input=input_data,
                 capture_output=True,
                 text=True,
                 check=True,
-                encoding="utf-8"
+                encoding="utf-8",
+                env=os.environ
             )
+            
+            # Parse output
+            for line in process.stdout.split("\n"):
+                if spacer in line:
+                    mfe_str = line.split()[-1].strip("()")
+                    try:
+                        return float(mfe_str)
+                    except ValueError:
+                        logger.error(f"Invalid MFE value: {mfe_str}")
+                        raise
+            raise ValueError(f"MFE parsing failed for {spacer}")
         except subprocess.CalledProcessError as e:
             logger.error(f"RNAfold execution failed for spacer {spacer}")
             logger.error(f"Command: {' '.join(e.cmd)}")
@@ -227,16 +246,6 @@ class Cas13gRNADesigner:
         except Exception as e:
             logger.error(f"Unexpected error running RNAfold: {str(e)}")
             raise
-        
-        # Extract MFE from RNAfold output
-        for line in process.stdout.split("\n"):
-            if spacer in line:
-                try:
-                    return float(line.split()[-1].strip("()"))
-                except ValueError:
-                    logger.error(f"Could not convert MFE value: {line.split()[-1]}")
-                    raise
-        raise ValueError(f"MFE parsing failed for {spacer}")
 
 
 # Exception Classes
