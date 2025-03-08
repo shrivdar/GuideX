@@ -102,25 +102,22 @@ class Cas13gRNADesigner:
     def design(self, sequence: str, regions: List[Tuple[int, int]]) -> List[gRNACandidate]:
         """Main design pipeline with parallel processing"""
         sequence = sequence.upper()
-        candidates = list(self._generate_candidates(sequence, regions))  # Convert generator to list
+        candidates = list(self._generate_candidates(sequence, regions))
+        
+        if not candidates:
+            logger.warning("No candidate gRNAs generated")
+            return []
         
         with ThreadPoolExecutor(self.config.max_workers) as executor:
-            # Process in batches to balance memory/performance
             batches = [
                 candidates[i:i+self.config.batch_size] 
                 for i in range(0, len(candidates), self.config.batch_size)
             ]
             processed = []
             for batch in batches:
-                processed.extend(
-                    executor.map(self._process_single_grna, batch)
-                )
+                processed.extend(executor.map(self._process_single_grna, batch))
         
-        return [
-            candidate for candidate in processed
-            if candidate.passes_checks
-        ]
-
+        return [candidate for candidate in processed if candidate.passes_checks]
 
     # Internal Methods
     def _load_and_validate_config(self, config_path: Path) -> Cas13Config:
