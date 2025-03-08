@@ -1,3 +1,4 @@
+import os
 import re
 import logging
 import subprocess
@@ -90,6 +91,9 @@ class ResultsHandler:
 class Cas13gRNADesigner:
     """High-performance Cas13 gRNA designer with parallel MFE prediction"""
     
+    logger.debug("Current environment PATH: %s", os.environ.get('PATH', ''))
+    logger.debug("RNAfold path: %s", '/opt/homebrew/Caskroom/miniforge/base/bin/RNAfold')
+    
     def __init__(self, config_path: Path = Path("config/cas13_rules.yaml")):
         self.config = self._load_and_validate_config(config_path)
         self._verify_rnafold()
@@ -133,15 +137,22 @@ class Cas13gRNADesigner:
         rna_fold_path = "/opt/homebrew/Caskroom/miniforge/base/bin/RNAfold"
         try:
             result = subprocess.run(
-                ["RNAfold", "--version"],
+                [rna_fold_path, "--version"],
                 capture_output=True,
                 text=True,
                 check=True
             )
             if "ViennaRNA" not in result.stdout:
                 raise RuntimeError("RNAfold not properly installed")
+            logger.info(f"RNAfold found at: {rna_fold_path}")
+        except FileNotFoundError:
+            logger.critical(f"RNAfold not found at expected path: {rna_fold_path}")
+            raise
+        except subprocess.CalledProcessError as e:
+            logger.critical(f"RNAfold version check failed with error: {e.stderr}")
+            raise
         except Exception as e:
-            logger.critical("RNAfold dependency missing")
+            logger.critical(f"Unexpected error verifying RNAfold: {str(e)}")
             raise
 
     def _generate_candidates(self, sequence: str, regions: List[Tuple[int, int]]) -> Generator[gRNACandidate, None, None]:
@@ -195,8 +206,8 @@ class Cas13gRNADesigner:
         return mfe < self.config.mfe_threshold
 
     def _calculate_mfe(self, spacer: str) -> float:
-        rna_fold_path = "/opt/homebrew/Caskroom/miniforge/base/bin/RNAfold"
         """Calculate MFE using RNAfold with direct stdin/stdout"""
+        rna_fold_path = "/opt/homebrew/Caskroom/miniforge/base/bin/RNAfold"
         try:
             process = subprocess.run(
                 [rna_fold_path, "--noPS"],
@@ -207,17 +218,24 @@ class Cas13gRNADesigner:
                 encoding="utf-8"
             )
         except subprocess.CalledProcessError as e:
-            logger.error(f"RNAfold execution failed with error code {e.returncode}")
+            logger.error(f"RNAfold execution failed for spacer {spacer}")
             logger.error(f"Command: {' '.join(e.cmd)}")
+            logger.error(f"Return code: {e.returncode}")
             logger.error(f"Output: {e.output}")
             logger.error(f"Error: {e.stderr}")
+            raise
+        except Exception as e:
+            logger.error(f"Unexpected error running RNAfold: {str(e)}")
             raise
         
         # Extract MFE from RNAfold output
         for line in process.stdout.split("\n"):
             if spacer in line:
-                return float(line.split()[-1].strip("()"))
-        
+                try:
+                    return float(line.split()[-1].strip("()"))
+                except ValueError:
+                    logger.error(f"Could not convert MFE value: {line.split()[-1]}")
+                    raise
         raise ValueError(f"MFE parsing failed for {spacer}")
 
 
