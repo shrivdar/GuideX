@@ -136,25 +136,11 @@ class Cas13gRNADesigner:
     def _verify_rnafold(self):
         """Ensure RNAfold is installed and accessible"""
         try:
-            # Check system PATH first
             rnafold_path = shutil.which("RNAfold")
             
             if not rnafold_path:
-                # Fallback to common install locations
-                common_paths = [
-                    "/opt/homebrew/bin/RNAfold",
-                    "/usr/local/bin/RNAfold",
-                    "/opt/miniconda3/bin/RNAfold"
-                ]
-                for path in common_paths:
-                    if Path(path).exists():
-                        rnafold_path = path
-                        break
-            
-            if not rnafold_path:
-                raise RuntimeError("RNAfold not found in PATH or common locations")
-    
-            # Verify executable version
+                raise RuntimeError("RNAfold not found in PATH")
+                
             result = subprocess.run(
                 [rnafold_path, "--version"],
                 capture_output=True,
@@ -162,14 +148,25 @@ class Cas13gRNADesigner:
                 check=True
             )
             
-            if "ViennaRNA" not in result.stdout:
-                raise RuntimeError(f"Invalid RNAfold installation at {rnafold_path}")
+            # Handle different version formats
+            version_pattern = r"ViennaRNA[ \t]+(\d+\.\d+\.\d+)"
+            match = re.search(version_pattern, result.stdout)
+            
+            if not match:
+                raise RuntimeError(f"Unexpected version format: {result.stdout[:50]}...")
                 
-            logger.info(f"RNAfold verified at: {rnafold_path}")
+            version = tuple(map(int, match.group(1).split('.')))
+            if version < (2, 4, 0):
+                raise RuntimeError(f"Requires ViennaRNA ≥2.4.0, found {version}")
+                
             self.rnafold_path = rnafold_path
+            logger.info(f"RNAfold {version} verified at: {rnafold_path}")
     
         except Exception as e:
             logger.critical(f"RNAfold verification failed: {str(e)}")
+            logger.info("\n💡 Installation Guide:\n"
+                        "1. conda install -c bioconda viennarna\n"
+                        "2. Verify with 'RNAfold --version'")
             raise
 
     def _generate_candidates(self, sequence: str, regions: List[Tuple[int, int]]) -> Generator[gRNACandidate, None, None]:
