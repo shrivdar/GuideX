@@ -149,24 +149,24 @@ class Cas13gRNADesigner:
             )
             
             # Handle different version formats
-            version_pattern = r"ViennaRNA[ \t]+(\d+\.\d+\.\d+)"
+            version_pattern = r"(?:ViennaRNA|RNAfold)[ \t]+(\d+\.\d+\.\d+)"
             match = re.search(version_pattern, result.stdout)
             
             if not match:
                 raise RuntimeError(f"Unexpected version format: {result.stdout[:50]}...")
                 
             version = tuple(map(int, match.group(1).split('.')))
+            logger.info(f"Detected RNAfold version: {'.'.join(map(str, version))}")
+            
             if version < (2, 4, 0):
-                raise RuntimeError(f"Requires ViennaRNA ≥2.4.0, found {version}")
+                raise RuntimeError(f"Requires ViennaRNA ≥2.4.0, found {'.'.join(map(str, version))}")
                 
             self.rnafold_path = rnafold_path
-            logger.info(f"RNAfold {version} verified at: {rnafold_path}")
+            logger.info(f"RNAfold verified at: {rnafold_path}")
     
         except Exception as e:
             logger.critical(f"RNAfold verification failed: {str(e)}")
-            logger.info("\n💡 Installation Guide:\n"
-                        "1. conda install -c bioconda viennarna\n"
-                        "2. Verify with 'RNAfold --version'")
+            logger.info("💡 Verify installation with: RNAfold --version")
             raise
 
     def _generate_candidates(self, sequence: str, regions: List[Tuple[int, int]]) -> Generator[gRNACandidate, None, None]:
