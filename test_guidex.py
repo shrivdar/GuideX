@@ -51,7 +51,6 @@ def main():
                 target="Influenza A virus hemagglutinin",  # Broader search
                 genome_type="gene",  # More likely to find matches
                 limit=10,
-                exclude_partial=False
             )
             if not genomes:
                 print("ℹ️ No genomes found - trying protein database")
