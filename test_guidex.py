@@ -47,12 +47,12 @@ def main():
         genomes = []
         try:
             print("🕵️ Attempting NCBI Datasets API v2 fetch...")
-                genomes = fetcher.fetch_genomes(
-                    target="11320",  # Influenza A virus taxid
-                    gene_name="HA",  # Hemagglutinin
-                    genome_type="gene",
-                    limit=10
-                )
+            genomes = fetcher.fetch_genomes(
+                 target="11320",  # Influenza A virus taxid
+                 gene_name="HA",  # Hemagglutinin
+                 genome_type="gene",
+                 limit=10
+            )
             if not genomes:
                 print("ℹ️ No genomes found - trying protein database")
                 genomes = fetcher.fetch_genomes(
