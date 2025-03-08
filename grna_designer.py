@@ -130,6 +130,7 @@ class Cas13gRNADesigner:
 
     def _verify_rnafold(self):
         """Ensure RNAfold is installed and accessible"""
+        rna_fold_path = "/opt/homebrew/Caskroom/miniforge/base/bin/RNAfold"
         try:
             result = subprocess.run(
                 ["RNAfold", "--version"],
@@ -194,15 +195,23 @@ class Cas13gRNADesigner:
         return mfe < self.config.mfe_threshold
 
     def _calculate_mfe(self, spacer: str) -> float:
+        rna_fold_path = "/opt/homebrew/Caskroom/miniforge/base/bin/RNAfold"
         """Calculate MFE using RNAfold with direct stdin/stdout"""
-        process = subprocess.run(
-            ["RNAfold", "--noPS"],
-            input=f">{spacer}\n{spacer}\n",
-            capture_output=True,
-            text=True,
-            check=True,
-            encoding="utf-8"
-        )
+        try:
+            process = subprocess.run(
+                [rna_fold_path, "--noPS"],
+                input=f">{spacer}\n{spacer}\n",
+                capture_output=True,
+                text=True,
+                check=True,
+                encoding="utf-8"
+            )
+        except subprocess.CalledProcessError as e:
+            logger.error(f"RNAfold execution failed with error code {e.returncode}")
+            logger.error(f"Command: {' '.join(e.cmd)}")
+            logger.error(f"Output: {e.output}")
+            logger.error(f"Error: {e.stderr}")
+            raise
         
         # Extract MFE from RNAfold output
         for line in process.stdout.split("\n"):
