@@ -14,7 +14,7 @@ import warnings
 from guidex.genome_fetcher import GenomeFetcher
 from guidex.conservation import ConservationAnalyzer
 from alignment_engine import AlignmentEngine
-from guidex.core import GuideXGrnaDesigner
+from guidex.core import Cas13gRNADesigner
 
 LOCAL_GENOMES = [
     SeqRecord(
