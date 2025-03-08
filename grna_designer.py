@@ -166,20 +166,49 @@ class Cas13gRNADesigner:
             logger.info("💡 Verify installation with: RNAfold --version")
             raise
 
-    def _generate_candidates(self, sequence: str, regions: List[Tuple[int, int]]) -> Generator[gRNACandidate, None, None]:
-        """Generate candidate gRNAs from conserved regions"""
+    def _generate_candidates(
+        self, 
+        sequence: str, 
+        regions: List[Tuple[int, int]]
+    ) -> Generator[gRNACandidate, None, None]:
+        """Generate candidate gRNAs from conserved regions with validation"""
+        valid_chars = {'A', 'T', 'C', 'G'}
+        seq_len = len(sequence)
+        
         for start, end in regions:
-            region_seq = sequence[start:end]
-            for i in range(len(region_seq) - self.config.spacer_length + 1):
+            # Validate region boundaries
+            if start < 0 or end > seq_len or start >= end:
+                logger.warning(f"Skipping invalid region: ({start}, {end})")
+                continue
+                
+            region_seq = sequence[start:end].upper()
+            
+            # Calculate maximum valid starting position
+            max_start = len(region_seq) - self.config.spacer_length
+            if max_start < 0:
+                continue
+                
+            for i in range(max_start + 1):
+                # Extract and sanitize spacer
                 spacer = region_seq[i:i+self.config.spacer_length]
+                spacer = ''.join([c for c in spacer if c in valid_chars])
+                
+                # Skip invalid spacers
+                if len(spacer) != self.config.spacer_length:
+                    logger.debug(f"Skipping invalid spacer: {spacer}")
+                    continue
+                    
+                # Calculate metrics
                 gc = self._calculate_gc(spacer)
+                absolute_start = start + i
+                absolute_end = absolute_start + self.config.spacer_length
                 
                 yield gRNACandidate(
                     sequence=spacer,
-                    start=start + i,
-                    end=start + i + self.config.spacer_length,
+                    start=absolute_start,
+                    end=absolute_end,
                     gc_content=gc,
-                    mfe=0.0,
+                    mfe=0.0,  # Placeholder until MFE calculation
                     passes_checks=self._validate_basic(spacer, gc)
                 )
 
@@ -217,41 +246,56 @@ class Cas13gRNADesigner:
         return mfe < self.config.mfe_threshold
 
     def _calculate_mfe(self, spacer: str) -> float:
-        """Calculate MFE using RNAfold with direct stdin/stdout"""
-        rna_fold_path = "/opt/homebrew/Caskroom/miniforge/base/bin/RNAfold"
+        """Calculate MFE using RNAfold with robust parsing and error handling"""
         try:
-            # Prepare input for RNAfold
-            input_data = f">{spacer}\n{spacer}\n"
-            
-            # Execute RNAfold with full path and environment
+            # Validate spacer before processing
+            if not all(c in 'ATCG' for c in spacer):
+                raise ValueError(f"Invalid characters in spacer: {spacer}")
+    
+            # Execute RNAfold with direct stdin/stdout
             process = subprocess.run(
                 [self.rnafold_path, "--noPS"],
                 input=f">{spacer}\n{spacer}\n",
                 capture_output=True,
                 text=True,
                 check=True,
-                encoding="utf-8"
+                encoding="utf-8",
+                env=os.environ
             )
             
-            # Parse output
+            # Enhanced parsing logic
+            mfe_found = False
             for line in process.stdout.split("\n"):
-                if spacer in line:
-                    mfe_str = line.split()[-1].strip("()")
+                if line.startswith(spacer):
+                    parts = line.split()
+                    if len(parts) < 2:
+                        continue
+                    
+                    mfe_str = parts[-1].strip("()")
                     try:
-                        return float(mfe_str)
+                        mfe = float(mfe_str)
+                        mfe_found = True
+                        break
                     except ValueError:
-                        logger.error(f"Invalid MFE value: {mfe_str}")
-                        raise
-            raise ValueError(f"MFE parsing failed for {spacer}")
+                        logger.error(f"Invalid MFE format in line: {line}")
+                        raise ValueError(f"Non-numeric MFE value: {mfe_str}")
+    
+            if not mfe_found:
+                logger.error(f"RNAfold output parsing failed. Full output:\n{process.stdout}")
+                raise ValueError(f"No valid MFE found for {spacer}")
+    
+            return mfe
+    
         except subprocess.CalledProcessError as e:
-            logger.error(f"RNAfold execution failed for spacer {spacer}")
-            logger.error(f"Command: {' '.join(e.cmd)}")
-            logger.error(f"Return code: {e.returncode}")
-            logger.error(f"Output: {e.output}")
-            logger.error(f"Error: {e.stderr}")
-            raise
+            logger.error("RNAfold execution failed for spacer: %s", spacer)
+            logger.error("Command: %s", " ".join(e.cmd))
+            logger.error("Return code: %d", e.returncode)
+            logger.error("Output:\n%s", e.stdout)
+            logger.error("Error:\n%s", e.stderr)
+            raise GrnaDesignError(f"RNAfold failed with code {e.returncode}")
+    
         except Exception as e:
-            logger.error(f"Unexpected error running RNAfold: {str(e)}")
+            logger.error("Unexpected error processing spacer %s: %s", spacer, str(e))
             raise
 
 
