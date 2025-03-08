@@ -131,11 +131,13 @@ def main():
 
     except Exception as e:
         print(f"\n❌ Pipeline Error: {e}")
-        print("💡 Debug Checklist:")
-        print("1. Verify NCBI_API_KEY_2025 environment variable")
-        print("2. Check input sequences for sufficient similarity")
-        print("3. Inspect alignment file: cat alignments/INPUT.fasta")
-        print("4. Test manual conservation: python3 -m guidex.conservation alignments/INPUT.fasta")
+        print("💡 Final Verification Steps:")
+        print("1. Check RNAfold output manually:")
+        print(f"   echo '>TEST\nATGCGATAGCAT' | RNAfold --noPS")
+        print("2. Validate alignment file:")
+        print("   muscle -in alignments/INPUT.fasta -out test.fasta")
+        print("3. Test conservation analysis:")
+        print("   python3 -m guidex.conservation alignments/INPUT.fasta")
         sys.exit(1)
 
 if __name__ == "__main__":
