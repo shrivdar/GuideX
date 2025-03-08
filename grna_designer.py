@@ -102,7 +102,7 @@ class Cas13gRNADesigner:
     def design(self, sequence: str, regions: List[Tuple[int, int]]) -> List[gRNACandidate]:
         """Main design pipeline with parallel processing"""
         sequence = sequence.upper()
-        candidates = self._generate_candidates(sequence, regions)
+        candidates = list(self._generate_candidates(sequence, regions))  # Convert generator to list
         
         with ThreadPoolExecutor(self.config.max_workers) as executor:
             # Process in batches to balance memory/performance
