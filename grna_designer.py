@@ -2,6 +2,7 @@ import os
 import re
 import logging
 import subprocess
+import shutil
 from pathlib import Path
 from typing import List, Dict, Tuple, Generator
 from concurrent.futures import ThreadPoolExecutor
@@ -134,27 +135,41 @@ class Cas13gRNADesigner:
 
     def _verify_rnafold(self):
         """Ensure RNAfold is installed and accessible"""
-        rna_fold_path = "/opt/homebrew/Caskroom/miniforge/base/bin/RNAfold"
         try:
-            # Test if RNAfold executes properly
+            # Check system PATH first
+            rnafold_path = shutil.which("RNAfold")
+            
+            if not rnafold_path:
+                # Fallback to common install locations
+                common_paths = [
+                    "/opt/homebrew/bin/RNAfold",
+                    "/usr/local/bin/RNAfold",
+                    "/opt/miniconda3/bin/RNAfold"
+                ]
+                for path in common_paths:
+                    if Path(path).exists():
+                        rnafold_path = path
+                        break
+            
+            if not rnafold_path:
+                raise RuntimeError("RNAfold not found in PATH or common locations")
+    
+            # Verify executable version
             result = subprocess.run(
-                [rna_fold_path, "--version"],
+                [rnafold_path, "--version"],
                 capture_output=True,
                 text=True,
-                check=True,
-                env=os.environ
+                check=True
             )
+            
             if "ViennaRNA" not in result.stdout:
-                raise RuntimeError("RNAfold not properly installed")
-            logger.info(f"RNAfold found at: {rna_fold_path}")
-        except FileNotFoundError:
-            logger.critical(f"RNAfold executable not found at: {rna_fold_path}")
-            raise
-        except subprocess.CalledProcessError as e:
-            logger.critical(f"RNAfold version check failed: {e.stderr}")
-            raise
+                raise RuntimeError(f"Invalid RNAfold installation at {rnafold_path}")
+                
+            logger.info(f"RNAfold verified at: {rnafold_path}")
+            self.rnafold_path = rnafold_path
+    
         except Exception as e:
-            logger.critical(f"Unexpected error verifying RNAfold: {str(e)}")
+            logger.critical(f"RNAfold verification failed: {str(e)}")
             raise
 
     def _generate_candidates(self, sequence: str, regions: List[Tuple[int, int]]) -> Generator[gRNACandidate, None, None]:
@@ -207,7 +222,6 @@ class Cas13gRNADesigner:
         """Post-MFE validation"""
         return mfe < self.config.mfe_threshold
 
-
     def _calculate_mfe(self, spacer: str) -> float:
         """Calculate MFE using RNAfold with direct stdin/stdout"""
         rna_fold_path = "/opt/homebrew/Caskroom/miniforge/base/bin/RNAfold"
@@ -217,13 +231,12 @@ class Cas13gRNADesigner:
             
             # Execute RNAfold with full path and environment
             process = subprocess.run(
-                [rna_fold_path, "--noPS"],
-                input=input_data,
+                [self.rnafold_path, "--noPS"],
+                input=f">{spacer}\n{spacer}\n",
                 capture_output=True,
                 text=True,
                 check=True,
-                encoding="utf-8",
-                env=os.environ
+                encoding="utf-8"
             )
             
             # Parse output
