@@ -48,11 +48,18 @@ def main():
         try:
             print("🕵️ Attempting NCBI Datasets API v2 fetch...")
             genomes = fetcher.fetch_genomes(
-                target="Influenza A virus (H1N1) hemagglutinin",
-                genome_type="genome",  # Changed from "protein" to "genome"
-                limit=5,
-                exclude_partial=True
+                target="Influenza A virus hemagglutinin",  # Broader search
+                genome_type="gene",  # More likely to find matches
+                limit=10,
+                exclude_partial=False
             )
+            if not genomes:
+                print("ℹ️ No genomes found - trying protein database")
+                genomes = fetcher.fetch_genomes(
+                    target="Influenza A virus HA",
+                    genome_type="protein",
+                    limit=10
+                )
             if not genomes:
                 raise RuntimeError("NCBI returned 0 genomes")
             print(f"✅ Retrieved {len(genomes)} NCBI genomes")
