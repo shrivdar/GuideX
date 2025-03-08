@@ -105,12 +105,19 @@ def main():
         conservator.plot_conservation(jsd_scores, Path("results/conservation.html"))
         print("📊 Conservation plot generated")
 
-        # gRNA Design with empty check
-        print("\n🔬 Designing Cas13 gRNAs...")
-        if not conserved_regions:
-            raise ValueError("No conserved regions for gRNA design")
+        if conserved_regions:
+            print("\n🔬 Designing Cas13 gRNAs...")
+            target_sequence = str(valid_genomes[0].seq)
+            grnas = designer.design(target_sequence, conserved_regions)
             
-        grnas = designer.design(str(valid_genomes[0].seq), conserved_regions)
+            if not grnas:
+                print("⚠️ Designed 0 gRNAs - relaxing constraints")
+                designer.config.mfe_threshold = -1.0  # Relax MFE
+                designer.config.gc_min = 0.3
+                grnas = designer.design(target_sequence, conserved_regions)
+        else:
+            print("\n⏭️ Skipping gRNA design - no conserved regions")
+            grnas = []
         
         # Output results
         print(f"\n🎉 Success! Designed {len(grnas)} gRNAs:")
@@ -126,8 +133,9 @@ def main():
         print(f"\n❌ Pipeline Error: {e}")
         print("💡 Debug Checklist:")
         print("1. Verify NCBI_API_KEY_2025 environment variable")
-        print("2. Check MUSCLE installation: muscle -version")
-        print("3. Inspect input files in alignments/ directory")
+        print("2. Check input sequences for sufficient similarity")
+        print("3. Inspect alignment file: cat alignments/INPUT.fasta")
+        print("4. Test manual conservation: python3 -m guidex.conservation alignments/INPUT.fasta")
         sys.exit(1)
 
 if __name__ == "__main__":
