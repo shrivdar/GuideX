@@ -283,9 +283,12 @@ class Cas13gRNADesigner:
             logger.error("Output:\n%s", e.stdout)
             logger.error("Error:\n%s", e.stderr)
             raise GrnaDesignError(f"RNAfold failed with code {e.returncode}")
-        
+            
         except Exception as e:
-            logger.error("Unexpected error processing spacer %s: %s", spacer, str(e))
+            logger.error(f"Failed to process spacer: {spacer}")
+            logger.error(f"DNA sequence: {spacer}")
+            logger.error(f"Expected RNA pattern: {self._dna_to_rna(spacer)}")
+            logger.error(f"Full RNAfold output:\n{process.stdout}")
             raise
 
     def _dna_to_rna(self, sequence: str) -> str:
