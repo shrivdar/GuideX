@@ -246,45 +246,35 @@ class Cas13gRNADesigner:
         return mfe < self.config.mfe_threshold
 
     def _calculate_mfe(self, spacer: str) -> float:
-        """Calculate MFE using RNAfold with robust parsing and error handling"""
+        """Calculate MFE using RNAfold with RNA/DNA handling"""
         try:
-            # Validate spacer before processing
-            if not all(c in 'ATCG' for c in spacer):
-                raise ValueError(f"Invalid characters in spacer: {spacer}")
-    
-            # Execute RNAfold with direct stdin/stdout
+            # Convert spacer to RNA format for output matching
+            rna_spacer = spacer.replace('T', 'U')
+            
             process = subprocess.run(
                 [self.rnafold_path, "--noPS"],
                 input=f">{spacer}\n{spacer}\n",
                 capture_output=True,
                 text=True,
                 check=True,
-                encoding="utf-8",
-                env=os.environ
+                encoding="utf-8"
             )
             
-            # Enhanced parsing logic
-            mfe_found = False
-            for line in process.stdout.split("\n"):
-                if line.startswith(spacer):
-                    parts = line.split()
+            # Search for RNA-formatted sequence in output
+            for line in process.stdout.split('\n'):
+                if line.startswith(rna_spacer):
+                    parts = line.rsplit(' ', 1)  # Split from right to handle spaces in structure
                     if len(parts) < 2:
                         continue
                     
                     mfe_str = parts[-1].strip("()")
                     try:
-                        mfe = float(mfe_str)
-                        mfe_found = True
-                        break
+                        return float(mfe_str)
                     except ValueError:
-                        logger.error(f"Invalid MFE format in line: {line}")
+                        logger.error(f"Invalid MFE format: {mfe_str}")
                         raise ValueError(f"Non-numeric MFE value: {mfe_str}")
     
-            if not mfe_found:
-                logger.error(f"RNAfold output parsing failed. Full output:\n{process.stdout}")
-                raise ValueError(f"No valid MFE found for {spacer}")
-    
-            return mfe
+            raise ValueError(f"No MFE found for {spacer} in output:\n{process.stdout}")
     
         except subprocess.CalledProcessError as e:
             logger.error("RNAfold execution failed for spacer: %s", spacer)
@@ -293,7 +283,7 @@ class Cas13gRNADesigner:
             logger.error("Output:\n%s", e.stdout)
             logger.error("Error:\n%s", e.stderr)
             raise GrnaDesignError(f"RNAfold failed with code {e.returncode}")
-    
+        
         except Exception as e:
             logger.error("Unexpected error processing spacer %s: %s", spacer, str(e))
             raise
