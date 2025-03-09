@@ -18,14 +18,16 @@ from guidex.core import Cas13gRNADesigner
 
 LOCAL_GENOMES = [
     SeqRecord(
-        Seq("ATGCGATAGCATCGACTAGCATGACGTACGTACGTACGTACGTACGTACGTACGTA" * 100),
+        Seq(("ATGCGATAGCATCGACTAGCATGACGTACGTACGTACGTACGTACGTACGTACGTA" 
+             "ATGCGATAGCATCGACTAGCATGACGTACGTACGTACGTACGTACGTACGTACGTA") * 50),
         id="Local_HA_1",
-        description="Hemagglutinin (Test Strain A)"
+        description="Test Strain A"
     ),
     SeqRecord(
-        Seq("ATGCGATAGCATCGACTAGCATGACGTACGTACGTACGTACGTACGTACGTACGTA".replace("C", "T", 10) * 100),
+        Seq(("ATGCGATAGCATCGACTAGCATGACGTACGTACGTACGTACGTACGTACGTACGTA" 
+             "ATGCGATAGCATCGACTAGCATGACGTACGTACGTACGTACGTACGTACGTACGTA".replace("C", "T", 10)) * 50),
         id="Local_HA_2",
-        description="Hemagglutinin (Test Strain B)"
+        description="Test Strain B"
     )
 ]
 
@@ -48,8 +50,8 @@ def main():
         try:
             print("🕵️ Attempting NCBI Datasets API v2 fetch...")
             genomes = fetcher.fetch_genomes(
-                 target="11320",  # Influenza A virus taxid
-                 gene_name="HA",  # Hemagglutinin
+                 target="haemagglutinin",  # Influenza A virus taxid
+                 gene="HA",  # Hemagglutinin
                  genome_type="gene",
                  limit=10
             )
@@ -85,7 +87,13 @@ def main():
         # Dynamic threshold adjustment
         max_jsd = max(jsd_scores) if jsd_scores else 0
         conserved_regions = []
-        thresholds = [0.8, 0.7, 0.6, max(0.3, max_jsd * 0.9)]  # More conservative
+        thresholds = [
+            0.8, 
+            0.7, 
+            0.6, 
+            max(0.15, max_jsd * 0.9),  # Ensures minimum threshold
+            max_jsd - 0.05             # Catch borderline cases
+        ]  # More conservative
         
         for threshold in thresholds:
             conserved_regions = [(i, i+30) for i, score in enumerate(jsd_scores) if score > threshold]
