@@ -288,6 +288,15 @@ class Cas13gRNADesigner:
             logger.error("Unexpected error processing spacer %s: %s", spacer, str(e))
             raise
 
+    def _dna_to_rna(self, sequence: str) -> str:
+        """Convert DNA spacer to RNA format for output matching"""
+        return sequence.upper().replace('T', 'U')
+    
+    def _validate_rnafold_output(self, spacer: str, output: str) -> bool:
+        """Verify RNAfold output contains expected RNA sequence"""
+        rna_seq = self._dna_to_rna(spacer)
+        return any(line.startswith(rna_seq) for line in output.split('\n'))
+
 
 # Exception Classes
 class GrnaDesignError(Exception):
