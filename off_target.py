@@ -24,10 +24,48 @@ class OffTargetAnalyzer:
         self.max_mismatches = max_mismatches
         self._validate_index()
 
-    def analyze(self, spacer: str) -> List[OffTarget]:
-        """Full analysis pipeline"""
-        raw_output = self._run_crispritz(spacer)
-        return self._parse_output(raw_output)
+    def analyze(self, spacer: str) -> list:
+        """Run CRISPRitz analysis with proper path handling"""
+        try:
+            # Path to CRISPRitz python script
+            crispritz_path = Path(__file__).parent.parent.parent / "CRISPRitz/python/crispritz.py"
+            
+            # Create temporary output directory
+            output_dir = Path("crispritz_temp")
+            output_dir.mkdir(exist_ok=True)
+            
+            cmd = [
+                "python3",
+                str(crispritz_path),
+                "search",
+                str(self.genome_index),
+                spacer,
+                str(self.max_mismatches),
+                "-o", str(output_dir),
+                "-t", "4"  # Use 4 threads
+            ]
+            
+            result = subprocess.run(
+                cmd,
+                check=True,
+                capture_output=True,
+                text=True,
+                timeout=300  # 5 minute timeout
+            )
+            
+            # Parse output from generated file
+            output_file = output_dir / f"{spacer}.targets.txt"
+            with open(output_file) as f:
+                return self._parse_output(f.read())
+                
+        except subprocess.TimeoutExpired:
+            logger.error(f"CRISPRitz timed out for spacer: {spacer}")
+            return []
+        finally:
+            # Cleanup temp files
+            if output_file.exists():
+                output_file.unlink()
+            output_dir.rmdir()
 
     def _run_crispritz(self, spacer: str) -> str:
         """Execute CRISPRitz command"""
