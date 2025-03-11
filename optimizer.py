@@ -1,10 +1,11 @@
+from typing import List
 import numpy as np
 import torch
 import torch.nn as nn
 from torch.utils.data import Dataset, DataLoader
 from sklearn.preprocessing import OneHotEncoder
 from guidex.core.grna_designer import Cas13gRNADesigner  # Inherit base constraints
-from typing import List, Tuple, Dict, Optiona
+from typing import Tuple, Dict, Optiona
 
 class Cas13Optimizer(nn.Module):
     """Neural optimizer combining DeepCas13 architecture with rule-based constraints"""
@@ -131,7 +132,7 @@ class Cas13Optimizer(nn.Module):
 
 class OptimizationDataset(Dataset):
     """Adapter for loading gRNA activity datasets"""
-    def __init__(self, sequences: List[str], activities: List[float]):
+    def __init__(self, sequences: list[str], activities: list[float]):
         # Initialize encoder with DNA alphabet
         self.encoder = OneHotEncoder(categories=[['A','C','G','T']], sparse=False)
         
