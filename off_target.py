@@ -27,22 +27,22 @@ class OffTargetAnalyzer:
     def analyze(self, spacer: str) -> list:
         """Run CRISPRitz analysis with proper path handling"""
         try:
-            # Path to CRISPRitz python script
-            crispritz_path = Path(__file__).parent.parent.parent / "CRISPRitz/python/crispritz.py"
+            # Path to CRISPRitz script in your project structure
+            crispritz_path = Path(__file__).parent.parent.parent / "CRISPRitz/crispritz.py"
             
-            # Create temporary output directory
-            output_dir = Path("crispritz_temp")
-            output_dir.mkdir(exist_ok=True)
+            # Create temporary working directory
+            temp_dir = Path("crispritz_temp")
+            temp_dir.mkdir(exist_ok=True)
             
             cmd = [
                 "python3",
                 str(crispritz_path),
                 "search",
-                str(self.genome_index),
+                str(self.genome_index),  # Path to bowtie2 index
                 spacer,
                 str(self.max_mismatches),
-                "-o", str(output_dir),
-                "-t", "4"  # Use 4 threads
+                "-o", str(temp_dir),
+                "-th", "4"  # Use 4 threads
             ]
             
             result = subprocess.run(
@@ -54,18 +54,18 @@ class OffTargetAnalyzer:
             )
             
             # Parse output from generated file
-            output_file = output_dir / f"{spacer}.targets.txt"
-            with open(output_file) as f:
-                return self._parse_output(f.read())
-                
+            output_file = temp_dir / f"{spacer}.targets.txt"
+            if output_file.exists():
+                with open(output_file) as f:
+                    return self._parse_output(f.read())
+            return []
+            
         except subprocess.TimeoutExpired:
-            logger.error(f"CRISPRitz timed out for spacer: {spacer}")
+            logger.error(f"CRISPRitz timed out for spacer: {spacer[:12]}...")
             return []
         finally:
             # Cleanup temp files
-            if output_file.exists():
-                output_file.unlink()
-            output_dir.rmdir()
+            shutil.rmtree(temp_dir, ignore_errors=True)
 
     def _run_crispritz(self, spacer: str) -> str:
         """Execute CRISPRitz command"""
