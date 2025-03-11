@@ -23,6 +23,9 @@ class OffTargetAnalyzer:
         self.genome_index = genome_index
         self.max_mismatches = max_mismatches
         self._validate_index()
+        if not (genome_index.with_suffix('.1.bt2').exists()):
+            raise FileNotFoundError(f"Missing bowtie2 index: {genome_index}")
+        self.genome_index = genome_index
 
     def analyze(self, spacer: str) -> list:
         """Run CRISPRitz analysis with proper path handling"""
