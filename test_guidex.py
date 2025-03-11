@@ -58,7 +58,8 @@ def main():
         try:
             print("🕵️ Attempting NCBI Datasets API v2 fetch...")
             genomes = fetcher.fetch_genomes(
-                target="haemagglutinin",
+                target="Influenza A virus",  # Official taxonomy name
+                gene="HA",                   # Hemagglutinin gene symbol
                 genome_type="gene",
                 limit=10
             )
