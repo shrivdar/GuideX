@@ -4,7 +4,7 @@ from typing import List
 from skbio import DNA, TabularMSA
 from scipy.spatial.distance import jensenshannon
 import plotly.express as px
-from guidex.utils.logger import setup_logger
+from ..utils.logger import setup_logger
 
 logger = setup_logger(__name__)
 
