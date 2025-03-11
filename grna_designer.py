@@ -246,35 +246,48 @@ class Cas13gRNADesigner:
         return mfe < self.config.mfe_threshold
 
     def _calculate_mfe(self, spacer: str) -> float:
-        """Calculate MFE using RNAfold with RNA/DNA handling"""
+        """Calculate MFE using RNAfold with hybrid parsing and enhanced diagnostics"""
         try:
-            # Convert spacer to RNA format for output matching
-            rna_spacer = spacer.replace('T', 'U')
+            # Validate input and convert to RNA format
+            if not all(c in 'ATCG' for c in spacer):
+                raise ValueError(f"Invalid characters in spacer: {spacer}")
             
+            rna_spacer = spacer.replace('T', 'U')
+            input_data = f">{spacer}\n{spacer}\n"
+    
+            # Execute RNAfold with full diagnostics
             process = subprocess.run(
                 [self.rnafold_path, "--noPS"],
-                input=f">{spacer}\n{spacer}\n",
+                input=input_data,
                 capture_output=True,
                 text=True,
                 check=True,
-                encoding="utf-8"
+                encoding="utf-8",
+                env=os.environ
             )
             
-            # Search for RNA-formatted sequence in output
+            # Attempt 1: Precise line-based parsing
+            mfe_value = None
             for line in process.stdout.split('\n'):
                 if line.startswith(rna_spacer):
-                    parts = line.rsplit(' ', 1)  # Split from right to handle spaces in structure
-                    if len(parts) < 2:
-                        continue
-                    
-                    mfe_str = parts[-1].strip("()")
-                    try:
-                        return float(mfe_str)
-                    except ValueError:
-                        logger.error(f"Invalid MFE format: {mfe_str}")
-                        raise ValueError(f"Non-numeric MFE value: {mfe_str}")
+                    parts = line.rsplit(' ', 1)
+                    if len(parts) == 2:
+                        try:
+                            mfe_value = float(parts[-1].strip("()"))
+                            break
+                        except (ValueError, IndexError):
+                            logger.debug(f"Line parsing failed for: {line}")
     
-            raise ValueError(f"No MFE found for {spacer} in output:\n{process.stdout}")
+            # Attempt 2: Regex fallback parsing
+            if mfe_value is None:
+                mfe_match = re.search(r"[-]?\d+\.\d+\)", process.stdout)
+                if mfe_match:
+                    mfe_value = float(mfe_match.group(1))
+                    logger.debug(f"Regex fallback parsed MFE: {mfe_value}")
+                else:
+                    raise ValueError("No MFE found in RNAfold output")
+    
+            return mfe_value
     
         except subprocess.CalledProcessError as e:
             logger.error("RNAfold execution failed for spacer: %s", spacer)
@@ -283,13 +296,14 @@ class Cas13gRNADesigner:
             logger.error("Output:\n%s", e.stdout)
             logger.error("Error:\n%s", e.stderr)
             raise GrnaDesignError(f"RNAfold failed with code {e.returncode}")
-            
+    
         except Exception as e:
-            logger.error(f"Failed to process spacer: {spacer}")
-            logger.error(f"DNA sequence: {spacer}")
-            logger.error(f"Expected RNA pattern: {self._dna_to_rna(spacer)}")
-            logger.error(f"Full RNAfold output:\n{process.stdout}")
-            raise
+            logger.error("MFE calculation failed for spacer: %s", spacer)
+            logger.error("DNA sequence: %s", spacer)
+            logger.error("RNA sequence: %s", rna_spacer)
+            logger.error("RNAfold input:\n%s", input_data)
+            logger.error("RNAfold output:\n%s", process.stdout if 'process' in locals() else 'No output')
+            raise GrnaDesignError(f"MFE calculation failed: {str(e)}")
 
     def _dna_to_rna(self, sequence: str) -> str:
         """Convert DNA spacer to RNA format for output matching"""
