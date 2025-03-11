@@ -145,25 +145,25 @@ def main():
         (output_dir / "grnas.txt").write_text("\n".join(g['spacer'] for g in grnas))
         print(f"\n📁 Results saved to {output_dir}/")
 
-            if grnas:
-                print("\n🔍 Running off-target analysis...")
-                for grna in grnas:
-                    grna.offtargets = ot_analyzer.analyze(grna.sequence)
-                    grna.offtarget_score = len(grna.offtargets)
+        if grnas:
+            print("\n🔍 Running off-target analysis...")
+            for grna in grnas:
+                grna.offtargets = ot_analyzer.analyze(grna.sequence)
+                grna.offtarget_score = len(grna.offtargets)
 
-                print("\n⚙️ Optimizing gRNAs...")
-                try:
-                    optimized_grnas = []
-                    for grna in grnas:
-                        optimized = optimizer.optimize(grna.sequence)
-                        optimized_grnas.append({
-                            "original": grna.sequence,
-                            "optimized": optimized,
-                            "offtarget_score": grna.offtarget_score
-                        })
-                    grnas = optimized_grnas
-                except Exception as e:
-                    print(f"⚠️ Optimization failed: {e}")
+            print("\n⚙️ Optimizing gRNAs...")
+            try:
+                optimized_grnas = []
+                for grna in grnas:
+                    optimized = optimizer.optimize(grna.sequence)
+                    optimized_grnas.append({
+                        "original": grna.sequence,
+                        "optimized": optimized,
+                        "offtarget_score": grna.offtarget_score
+                    })
+                grnas = optimized_grnas
+            except Exception as e:
+                print(f"⚠️ Optimization failed: {e}")
 
     except Exception as e:
         print(f"\n❌ Pipeline Error: {e}")
