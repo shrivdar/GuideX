@@ -15,6 +15,9 @@ from guidex.genome_fetcher import GenomeFetcher
 from guidex.conservation import ConservationAnalyzer
 from alignment_engine import AlignmentEngine
 from guidex.core import Cas13gRNADesigner
+from guidex.grna.off_target import OffTargetAnalyzer
+from guidex.grna.optimizer import Cas13Optimizer
+import torch
 
 LOCAL_GENOMES = [
     SeqRecord(
@@ -44,6 +47,11 @@ def main():
         aligner = AlignmentEngine(max_threads=8)
         conservator = ConservationAnalyzer(window_size=30)
         designer = Cas13gRNADesigner()
+        ot_analyzer = OffTargetAnalyzer(Path("genomes/hg38"))
+        optimizer = Cas13Optimizer(designer)
+        
+        if Path("weights/optimizer.pth").exists():
+            optimizer.load_state_dict(torch.load("weights/optimizer.pth"))
 
         # Genome acquisition
         genomes = []
@@ -135,6 +143,26 @@ def main():
         output_dir = Path("results")
         (output_dir / "grnas.txt").write_text("\n".join(g['spacer'] for g in grnas))
         print(f"\n📁 Results saved to {output_dir}/")
+
+            if grnas:
+                print("\n🔍 Running off-target analysis...")
+                for grna in grnas:
+                    grna.offtargets = ot_analyzer.analyze(grna.sequence)
+                    grna.offtarget_score = len(grna.offtargets)
+
+                print("\n⚙️ Optimizing gRNAs...")
+                try:
+                    optimized_grnas = []
+                    for grna in grnas:
+                        optimized = optimizer.optimize(grna.sequence)
+                        optimized_grnas.append({
+                            "original": grna.sequence,
+                            "optimized": optimized,
+                            "offtarget_score": grna.offtarget_score
+                        })
+                    grnas = optimized_grnas
+                except Exception as e:
+                    print(f"⚠️ Optimization failed: {e}")
 
     except Exception as e:
         print(f"\n❌ Pipeline Error: {e}")
