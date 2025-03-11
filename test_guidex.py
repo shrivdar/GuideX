@@ -129,7 +129,7 @@ def main():
         # Output results
         print(f"\n🎉 Success! Designed {len(grnas)} gRNAs:")
         for i, grna in enumerate(grnas[:5], 1):
-            print(f"{i}. {grna['spacer']} (pos {grna['start']}-{grna['end']})")
+            print(f"{i}. {grna.sequence} (pos {grna.start}-{grna.end})")
 
         # Save outputs
         output_dir = Path("results")
