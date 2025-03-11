@@ -4,6 +4,7 @@ import torch.nn as nn
 from torch.utils.data import Dataset, DataLoader
 from sklearn.preprocessing import OneHotEncoder
 from guidex.core.grna_designer import Cas13gRNADesigner  # Inherit base constraints
+from typing import List, Tuple, Dict, Optiona
 
 class Cas13Optimizer(nn.Module):
     """Neural optimizer combining DeepCas13 architecture with rule-based constraints"""
@@ -134,6 +135,8 @@ class OptimizationDataset(Dataset):
         self.encoder = OneHotEncoder(categories=[['A','C','G','T']], sparse=False)
         self.X = [self._encode(s) for s in sequences]
         self.y = activities
+        self.sequences = sequences
+        self.activities = activites
 
     def _encode(self, seq: str) -> torch.Tensor:
         encoded = self.encoder.fit_transform(list(seq))
@@ -141,9 +144,11 @@ class OptimizationDataset(Dataset):
 
     def __len__(self):
         return len(self.X)
+        return len(self.sequences)
 
     def __getitem__(self, idx):
         return self.X[idx], self.y[idx]
+        return self.sequences[idx], self.activities[idx]
 
 def train_optimizer(model: Cas13Optimizer, 
                    train_data: DataLoader,
