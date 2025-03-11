@@ -132,23 +132,30 @@ class Cas13Optimizer(nn.Module):
 class OptimizationDataset(Dataset):
     """Adapter for loading gRNA activity datasets"""
     def __init__(self, sequences: List[str], activities: List[float]):
+        # Initialize encoder with DNA alphabet
         self.encoder = OneHotEncoder(categories=[['A','C','G','T']], sparse=False)
+        
+        # Fit encoder once with all possible nucleotides
+        self.encoder.fit([['A'], ['C'], ['G'], ['T']])
+        
+        # Precompute encoded sequences and store activities
         self.X = [self._encode(s) for s in sequences]
         self.y = activities
-        self.sequences = sequences
-        self.activities = activites
+        self.sequences = sequences  # Store original sequences for reference
 
     def _encode(self, seq: str) -> torch.Tensor:
-        encoded = self.encoder.fit_transform(list(seq))
-        return torch.tensor(encoded.T, dtype=torch.float32)
+        """Convert DNA sequence to one-hot encoded tensor"""
+        # Transform needs 2D input: [samples, features]
+        encoded = self.encoder.transform([list(seq)])
+        return torch.tensor(encoded.T, dtype=torch.float32).squeeze()
 
-    def __len__(self):
+    def __len__(self) -> int:
+        """Return total number of samples"""
         return len(self.X)
-        return len(self.sequences)
 
-    def __getitem__(self, idx):
+    def __getitem__(self, idx: int) -> Tuple[torch.Tensor, float]:
+        """Get encoded sequence and corresponding activity"""
         return self.X[idx], self.y[idx]
-        return self.sequences[idx], self.activities[idx]
 
 def train_optimizer(model: Cas13Optimizer, 
                    train_data: DataLoader,
