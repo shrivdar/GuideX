@@ -282,7 +282,7 @@ class Cas13gRNADesigner:
             if mfe_value is None:
                 mfe_match = re.search(r"\(\s*([-]?\d+\.\d+)\s*\)", process.stdout)
                 if mfe_match:
-                    return float(mfe_match.group(1)
+                    return float(mfe_match.group(1))
                     logger.debug(f"Regex fallback parsed MFE: {mfe_value}")
                 else:
                     raise ValueError("No MFE found in RNAfold output")
