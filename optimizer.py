@@ -5,7 +5,7 @@ import torch.nn as nn
 from torch.utils.data import Dataset, DataLoader
 from sklearn.preprocessing import OneHotEncoder
 from guidex.core.grna_designer import Cas13gRNADesigner  # Inherit base constraints
-from typing import Tuple, Dict, Optiona
+from typing import Tuple, Dict, Optional
 
 class Cas13Optimizer(nn.Module):
     """Neural optimizer combining DeepCas13 architecture with rule-based constraints"""
