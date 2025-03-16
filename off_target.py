@@ -324,9 +324,13 @@ class OffTargetResult(BaseModel):
     plot_path: Path
     raw_results_path: Path
 
+    @property
+    def plot_generated(self) -> bool:
+        return self.plot_path.exists()
+
     @classmethod
     def summarize(cls, spacer: str, targets: List[OffTarget], output_dir: Path):
-        return cls(
+        result = cls(
             spacer=spacer,
             total_offtargets=len(targets),
             analysis_directory=output_dir,
@@ -334,3 +338,5 @@ class OffTargetResult(BaseModel):
             plot_path=output_dir / "mismatch_distribution.png",
             raw_results_path=output_dir / "raw_results.txt"
         )
+        logger.debug(f"Plot generation status: {'Success' if result.plot_generated else 'Failed'}")
+        return result
