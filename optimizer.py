@@ -49,9 +49,16 @@ class Cas13Optimizer(nn.Module):
             nn.Sigmoid()
         )
 
+
     def _sequence_to_tensor(self, seq: str) -> torch.Tensor:
-        """One-hot encode using pre-fit encoder"""
-        encoded = self.encoder.transform([list(seq)])
+        """Properly encode DNA sequence of length N to (4, N) tensor"""
+        # Reshape sequence to (n_samples, n_features) = (28, 1)
+        nucleotides = np.array(list(seq)).reshape(-1, 1)
+        
+        # Transform using pre-fit encoder
+        encoded = self.encoder.transform(nucleotides)
+        
+        # Convert to (channels, length) format
         return torch.tensor(encoded.T, dtype=torch.float32)
 
     def optimize(self, spacer: str, n_iter: int = 50) -> str:
