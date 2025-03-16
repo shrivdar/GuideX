@@ -279,21 +279,31 @@ class OffTargetAnalyzer:
         )
 
     def _generate_plots(self, spacer: str, targets: List[OffTarget], output_dir: Path):
-        """Generate visualization plots"""
-        sns.set_theme(style="whitegrid")
-        df = pd.DataFrame([self._target_to_dict(t) for t in targets])
-        
-        plt.figure(figsize=(10, 6))
-        ax = sns.histplot(
-            data=df,
-            x='mismatches',
-            bins=range(self.max_mismatches + 2),
-            kde=True,
-            edgecolor='black'
-        )
-        ax.set_title(f"Off-target Distribution: {spacer[:8]}...")
-        plt.savefig(output_dir / "mismatch_distribution.png")
-        plt.close()
+        """Generate visualization plots with path reporting"""
+        try:
+            if not targets:
+                return
+                
+            sns.set_theme(style="whitegrid")
+            df = pd.DataFrame([self._target_to_dict(t) for t in targets])
+            
+            plt.figure(figsize=(10, 6))
+            ax = sns.histplot(
+                data=df,
+                x='mismatches',
+                bins=range(self.max_mismatches + 2),
+                kde=True,
+                edgecolor='black'
+            )
+            ax.set_title(f"Off-target Distribution: {spacer[:8]}...")
+            plot_path = output_dir / "mismatch_distribution.png"
+            plt.savefig(plot_path)
+            plt.close()
+            logger.info(f"Successfully generated plot at: {plot_path}")
+            
+        except Exception as e:
+            logger.error(f"Plot generation failed: {str(e)}")
+            raise
 
     def _get_mismatch_counts(self, targets: List[OffTarget]) -> Dict[int, int]:
         return pd.Series([t.mismatches for t in targets]).value_counts().to_dict()
