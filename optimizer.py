@@ -51,14 +51,14 @@ class Cas13Optimizer(nn.Module):
 
 
     def _sequence_to_tensor(self, seq: str) -> torch.Tensor:
-        """Properly encode DNA sequence of length N to (4, N) tensor"""
-        # Reshape sequence to (n_samples, n_features) = (28, 1)
+        """Proper one-hot encoding for DNA sequences"""
+        # Reshape to (sequence_length, 1) for encoder
         nucleotides = np.array(list(seq)).reshape(-1, 1)
         
         # Transform using pre-fit encoder
         encoded = self.encoder.transform(nucleotides)
         
-        # Convert to (channels, length) format
+        # Convert to (channels, sequence_length) format
         return torch.tensor(encoded.T, dtype=torch.float32)
 
     def optimize(self, spacer: str, n_iter: int = 50) -> str:
