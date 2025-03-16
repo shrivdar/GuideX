@@ -8,8 +8,6 @@ from guidex.core.grna_designer import Cas13gRNADesigner
 from typing import Tuple, Dict, Optional
 
 class Cas13Optimizer(nn.Module):
-    """Neural optimizer combining DeepCas13 architecture with rule-based constraints"""
-    
     def __init__(self, designer: Cas13gRNADesigner):
         super().__init__()
         self.designer = designer
@@ -48,7 +46,27 @@ class Cas13Optimizer(nn.Module):
             nn.Linear(32, 1),
             nn.Sigmoid()
         )
-
+        
+    # ADD THIS CRITICAL METHOD
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        """Full forward pass for efficacy prediction"""
+        # Conv block
+        x = self.conv(x)
+        
+        # LSTM with packed sequence
+        x = x.permute(2, 0, 1)  # (seq_len, batch, features)
+        x, (h_n, c_n) = self.lstm(x)
+        
+        # Attention mechanism
+        attn_out, _ = self.attention(x, x, x)
+        
+        # Concatenate final states
+        combined = torch.cat([
+            h_n[-1],  # Last hidden state
+            attn_out.mean(dim=0)  # Average attention
+        ], dim=1)
+        
+        return self.classifier(combined)
 
     def _sequence_to_tensor(self, seq: str) -> torch.Tensor:
         """Proper one-hot encoding for DNA sequences"""
