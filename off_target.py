@@ -10,6 +10,7 @@ import matplotlib.pyplot as plt
 import seaborn as sns
 import pandas as pd
 from pydantic import BaseModel
+from ..utils.visualization import PlotTracker
 
 logger = logging.getLogger(__name__)
 
@@ -49,39 +50,73 @@ class OffTargetAnalyzer:
         self.output_dir.mkdir(parents=True, exist_ok=True)
 
     def analyze(self, spacer: str) -> list:
-        """Run analysis with CRISPRitz, falling back to Bowtie on failure"""
+        """Run analysis with CRISPRitz/Bowtie and track visualization status"""
         spacer_hash = abs(hash(spacer)) % 1000
         spacer_dir = self.output_dir / f"{spacer[:8]}_{spacer_hash:03d}"
-        spacer_dir.mkdir(exist_ok=True)
-    
-        try:
-            if self.crispritz_available:
-                targets = self._run_crispritz(spacer, spacer_dir)
-                if targets is None:  # Indicates CRISPRitz failure
-                    raise RuntimeError("CRISPRitz failed, initiating Bowtie fallback")
-            else:
-                targets = self._run_bowtie(spacer, spacer_dir)
-        except Exception as e:
-            logger.error(f"Primary analysis failed: {str(e)}")
-            targets = self._run_bowtie(spacer, spacer_dir) if self.bowtie_available else []
-    
-        # Add plot status tracking here
+        spacer_dir.mkdir(parents=True, exist_ok=True)
+        
+        # Initialize plot tracking variables
         plot_generated = False
         plot_path = spacer_dir / "mismatch_distribution.png"
-        if targets:
-            self._save_results(spacer, targets, spacer_dir)
-            try:
+        targets = []
+        
+        try:
+            logger.debug(f"🔧 Starting off-target analysis for {spacer[:12]}...")
+            logger.debug(f"📂 Using output directory: {spacer_dir}")
+            
+            if self.crispritz_available:
+                logger.debug("⚡ Using CRISPRitz engine")
+                targets = self._run_crispritz(spacer, spacer_dir)
+                if targets is None:
+                    raise RuntimeError("CRISPRitz returned empty results")
+            else:
+                logger.debug("⚡ CRISPRitz unavailable, using Bowtie fallback")
+                targets = self._run_bowtie(spacer, spacer_dir)
+                
+        except Exception as e:
+            logger.error(f"🔴 Primary analysis failed: {str(e)}")
+            if self.bowtie_available:
+                logger.info("🔄 Attempting Bowtie fallback...")
+                try:
+                    targets = self._run_bowtie(spacer, spacer_dir)
+                except Exception as bowtie_error:
+                    logger.critical(f"🔥 Complete analysis failure: {bowtie_error}")
+                    targets = []
+            else:
+                logger.critical("❌ No available analysis engines")
+                targets = []
+    
+        try:
+            if targets:
+                logger.debug(f"📦 Saving {len(targets)} results...")
+                self._save_results(spacer, targets, spacer_dir)
+                
+                logger.debug("🎨 Generating visualization...")
                 self._generate_plots(spacer, targets, spacer_dir)
                 plot_generated = plot_path.exists()
-            except Exception as e:
-                logger.error(f"Plot generation failed: {str(e)}")
+                
+                # Add debug output for plot paths
+                if plot_generated:
+                    logger.debug(f"🖼️ Plot saved to: {plot_path}")
+                else:
+                    logger.warning("⚠️ Plot file missing despite generation attempt")
+        except Exception as save_error:
+            logger.error(f"📦 Results handling failed: {save_error}")
+            plot_generated = False
     
-        # Add result reporting
-        logger.info(f"\n🔍 Off-target analysis results:")
-        logger.info(f"📁 Output directory: {spacer_dir}")
-        logger.info(f"📈 Plot generated: {'Yes' if plot_generated else 'No'}")
+        # Final status report
+        status_msg = [
+            f"\n🔍 OFF-TARGET ANALYSIS REPORT: {spacer[:8]}...",
+            f"▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔",
+            f"• Total off-targets: {len(targets)}",
+            f"• Output directory: {spacer_dir}",
+            f"• Visualization: {'SUCCESS' if plot_generated else 'FAILED'}",
+        ]
+        
         if plot_generated:
-            logger.info(f"📊 Plot location: {plot_path}")
+            status_msg.append(f"• Plot path: {plot_path}")
+        
+        logger.info("\n".join(status_msg))
         
         return targets
 
