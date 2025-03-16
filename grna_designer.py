@@ -118,6 +118,8 @@ class Cas13gRNADesigner:
                 processed.extend(executor.map(self._process_single_grna, batch))
         
         return [candidate for candidate in processed if candidate.passes_checks]
+        unique_candidates = {c.sequence: c for c in processed if c.passes_checks}
+        return list(unique_candidates.values())
 
     # Internal Methods
     def _load_and_validate_config(self, config_path: Path) -> Cas13Config:
@@ -317,9 +319,11 @@ class Cas13gRNADesigner:
 
 # Exception Classes
 class GrnaDesignError(Exception):
+    pass
     """Base exception for gRNA design failures"""
 
 class InvalidSequenceError(GrnaDesignError):
+    pass
     """Raised when input sequence is invalid"""
 
 class ConfigurationError(GrnaDesignError):
