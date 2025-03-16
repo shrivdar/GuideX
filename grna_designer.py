@@ -31,15 +31,17 @@ class Cas13Config(BaseModel):
 
 
 # Data Structures
-@dataclass(frozen=True)
+@dataclass  # Remove frozen=True
 class gRNACandidate:
-    """Immutable data structure for gRNA results"""
+    """Mutable data structure for gRNA results"""
     sequence: str
     start: int
     end: int
     gc_content: float
     mfe: float
     passes_checks: bool
+    offtargets: Optional[List[dict]] = None  # New field
+    offtarget_score: Optional[int] = None   # New field
 
 class gRNAResult(BaseModel):
     sequence: str
@@ -83,7 +85,9 @@ class ResultsHandler:
                 end=item['end'],
                 gc_content=item['gc_content'],
                 mfe=item['mfe'],
-                passes_checks=True
+                passes_checks=True,
+                offtargets=item.get('offtargets'),        # Add these
+                offtarget_score=item.get('offtarget_score')
             ) for item in raw
         ]
 
