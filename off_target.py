@@ -53,21 +53,35 @@ class OffTargetAnalyzer:
         spacer_hash = abs(hash(spacer)) % 1000
         spacer_dir = self.output_dir / f"{spacer[:8]}_{spacer_hash:03d}"
         spacer_dir.mkdir(exist_ok=True)
-
+    
         try:
             if self.crispritz_available:
                 targets = self._run_crispritz(spacer, spacer_dir)
-                if targets is None:
+                if targets is None:  # Indicates CRISPRitz failure
                     raise RuntimeError("CRISPRitz failed, initiating Bowtie fallback")
             else:
                 targets = self._run_bowtie(spacer, spacer_dir)
         except Exception as e:
             logger.error(f"Primary analysis failed: {str(e)}")
             targets = self._run_bowtie(spacer, spacer_dir) if self.bowtie_available else []
-
+    
+        # Add plot status tracking here
+        plot_generated = False
+        plot_path = spacer_dir / "mismatch_distribution.png"
         if targets:
             self._save_results(spacer, targets, spacer_dir)
-            self._generate_plots(spacer, targets, spacer_dir)
+            try:
+                self._generate_plots(spacer, targets, spacer_dir)
+                plot_generated = plot_path.exists()
+            except Exception as e:
+                logger.error(f"Plot generation failed: {str(e)}")
+    
+        # Add result reporting
+        logger.info(f"\n🔍 Off-target analysis results:")
+        logger.info(f"📁 Output directory: {spacer_dir}")
+        logger.info(f"📈 Plot generated: {'Yes' if plot_generated else 'No'}")
+        if plot_generated:
+            logger.info(f"📊 Plot location: {plot_path}")
         
         return targets
 
