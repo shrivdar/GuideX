@@ -100,16 +100,21 @@ class OffTargetAnalyzer:
 
     def _generate_plots(self, spacer: str, targets: List[OffTarget], output_dir: Path):
         """Generate visualization plots for off-target analysis"""
-        plt.style.use('seaborn')
+        import seaborn as sns
+        sns.set_theme(style="whitegrid", palette="muted")  # Initialize seaborn
         
-        # Mismatch distribution plot
         df = pd.DataFrame([self._target_to_dict(t) for t in targets])
         if not df.empty:
             plt.figure(figsize=(10, 6))
-            sns.histplot(data=df, x='mismatches', bins=range(self.max_mismatches+2))
-            plt.title(f"Off-target Mismatch Distribution: {spacer[:8]}...")
-            plt.xlabel("Number of Mismatches")
-            plt.ylabel("Count")
+            ax = sns.histplot(
+                data=df, 
+                x='mismatches', 
+                bins=range(self.max_mismatches+2),
+                kde=True
+            )
+            ax.set_title(f"Off-target Mismatch Distribution: {spacer[:8]}...")
+            ax.set_xlabel("Number of Mismatches")
+            ax.set_ylabel("Count")
             plt.savefig(output_dir / "mismatch_distribution.png")
             plt.close()
 
