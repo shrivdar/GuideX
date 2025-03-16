@@ -2,6 +2,7 @@ import shutil
 import subprocess
 import logging
 import json
+import os
 from pathlib import Path
 from typing import List, Dict
 from dataclasses import dataclass
@@ -34,27 +35,34 @@ class OffTargetAnalyzer:
     def analyze(self, spacer: str) -> list:
         """Run CRISPRitz analysis and save full results with visualization"""
         try:
-            # Create spacer-specific output directory
-            spacer_dir = self.output_dir / f"{spacer[:8]}_{hash(spacer) % 1000:03d}"
+            # Create unique output directory with spacer hash
+            spacer_hash = abs(hash(spacer)) % 1000
+            spacer_dir = self.output_dir / f"{spacer[:8]}_{spacer_hash:03d}"
             spacer_dir.mkdir(exist_ok=True)
             
-            # Run CRISPRitz analysis
+            # Run analysis with strict output handling
             targets = self._run_crispritz(spacer, spacer_dir)
             
-            # Save and visualize results
-            self._save_results(spacer, targets, spacer_dir)
-            self._generate_plots(spacer, targets, spacer_dir)
+            if targets:
+                self._save_results(spacer, targets, spacer_dir)
+                self._generate_plots(spacer, targets, spacer_dir)
             
             return targets
             
         except subprocess.TimeoutExpired:
             logger.error(f"CRISPRitz timed out for spacer: {spacer[:12]}...")
             return []
+        finally:
+            self._clean_temp_files(spacer_dir)
 
     def _run_crispritz(self, spacer: str, output_dir: Path) -> List[OffTarget]:
-        """Execute CRISPRitz command with proper output handling"""
+        """Execute CRISPRitz command with improved error handling"""
         try:
             crispritz_path = Path(__file__).parent.parent.parent / "CRISPRitz/crispritz.py"
+            if not crispritz_path.exists():
+                raise FileNotFoundError(f"CRISPRitz not found at {crispritz_path}")
+
+            output_file = output_dir / "crispritz_results.txt"
             
             cmd = [
                 "python3",
@@ -63,60 +71,93 @@ class OffTargetAnalyzer:
                 str(self.genome_index),
                 spacer,
                 str(self.max_mismatches),
-                "-o", str(output_dir),
-                "-th", "4"
+                "-o", str(output_file.with_suffix('')),  # CRISPRitz auto-adds extension
+                "-th", "4",
+                "-quiet"  # Suppress interactive prompts
             ]
             
-            subprocess.run(cmd, check=True, timeout=300)
+            result = subprocess.run(
+                cmd,
+                check=True,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                timeout=300,
+                text=True,
+                input='\n'  # Force feed newline to prevent hangs
+            )
             
-            # Parse and return targets
-            output_file = output_dir / f"{spacer}.targets.txt"
-            if output_file.exists():
-                with open(output_file) as f:
-                    return self._parse_output(f.read())
+            # Debug logging
+            logger.debug(f"CRISPRitz stdout: {result.stdout[:200]}")
+            if result.stderr:
+                logger.warning(f"CRISPRitz stderr: {result.stderr[:200]}")
+
+            # Handle output file naming variations
+            for ext in ['.targets.txt', '.results.txt']:
+                candidate_file = output_file.with_suffix(ext)
+                if candidate_file.exists():
+                    with open(candidate_file) as f:
+                        return self._parse_output(f.read())
+            
+            logger.warning(f"No output file found for spacer: {spacer}")
             return []
-            
+
         except subprocess.CalledProcessError as e:
-            logger.error(f"CRISPRitz failed: {e.stderr}")
+            logger.error(f"CRISPRitz failed with code {e.returncode}: {e.stderr[:200]}")
             raise RuntimeError("Off-target analysis failed") from e
 
     def _save_results(self, spacer: str, targets: List[OffTarget], output_dir: Path):
-        """Save analysis results in multiple formats"""
-        # Save raw CRISPRitz output
-        raw_path = output_dir / "raw_results.txt"
-        with open(raw_path, 'w') as f:
-            f.write("\n".join(str(t) for t in targets))
+        """Save analysis results with validation"""
+        try:
+            raw_path = output_dir / "raw_results.txt"
+            with open(raw_path, 'w') as f:
+                f.write("\n".join(f"{t.chromosome}\t{t.position}\t{t.strand}\t{t.mismatches}\t{t.sequence}" 
+                          for t in targets))
             
-        # Save JSON summary
-        summary = {
-            "spacer": spacer,
-            "total_offtargets": len(targets),
-            "mismatch_distribution": self._get_mismatch_counts(targets),
-            "top_hits": [self._target_to_dict(t) for t in targets[:5]]
-        }
-        json_path = output_dir / "summary.json"
-        with open(json_path, 'w') as f:
-            json.dump(summary, f, indent=2)
+            summary = {
+                "spacer": spacer,
+                "total_offtargets": len(targets),
+                "mismatch_distribution": self._get_mismatch_counts(targets),
+                "top_hits": [self._target_to_dict(t) for t in targets[:5]]
+            }
+            (output_dir / "summary.json").write_text(json.dumps(summary, indent=2))
+            
+        except Exception as e:
+            logger.error(f"Failed to save results: {str(e)}")
 
     def _generate_plots(self, spacer: str, targets: List[OffTarget], output_dir: Path):
-        """Generate visualization plots for off-target analysis"""
-        import seaborn as sns
-        sns.set_theme(style="whitegrid", palette="muted")  # Initialize seaborn
-        
-        df = pd.DataFrame([self._target_to_dict(t) for t in targets])
-        if not df.empty:
+        """Generate visualization plots with error handling"""
+        try:
+            if not targets:
+                return
+                
+            sns.set_theme(style="whitegrid", palette="muted")
+            df = pd.DataFrame([self._target_to_dict(t) for t in targets])
+            
             plt.figure(figsize=(10, 6))
             ax = sns.histplot(
                 data=df, 
                 x='mismatches', 
-                bins=range(self.max_mismatches+2),
-                kde=True
+                bins=range(self.max_mismatches + 2),
+                kde=True,
+                edgecolor='black'
             )
             ax.set_title(f"Off-target Mismatch Distribution: {spacer[:8]}...")
             ax.set_xlabel("Number of Mismatches")
             ax.set_ylabel("Count")
+            plt.tight_layout()
             plt.savefig(output_dir / "mismatch_distribution.png")
             plt.close()
+            
+        except Exception as e:
+            logger.error(f"Plot generation failed: {str(e)}")
+
+    def _clean_temp_files(self, output_dir: Path):
+        """Clean up intermediate files"""
+        try:
+            for f in output_dir.glob("*.tmp"):
+                f.unlink()
+        except Exception as e:
+            logger.warning(f"Temp file cleanup failed: {str(e)}")
 
     def _get_mismatch_counts(self, targets: List[OffTarget]) -> Dict[int, int]:
         counts = {}
