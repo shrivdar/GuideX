@@ -28,7 +28,7 @@ class OffTargetAnalyzer:
     def __init__(
         self,
         genome_index: Path,
-        reference_genome: Path,
+        reference_genome: Optional[Path] = None,  # Made optional
         max_mismatches: int = 3,
         output_dir: Path = Path("results/off_targets"),
         bowtie_path: Path = Path("bowtie"),
@@ -57,7 +57,7 @@ class OffTargetAnalyzer:
         try:
             if self.crispritz_available:
                 targets = self._run_crispritz(spacer, spacer_dir)
-                if targets is None:  # Indicates CRISPRitz failure
+                if targets is None:
                     raise RuntimeError("CRISPRitz failed, initiating Bowtie fallback")
             else:
                 targets = self._run_bowtie(spacer, spacer_dir)
@@ -89,12 +89,14 @@ class OffTargetAnalyzer:
             except Exception as e:
                 logger.warning(f"CRISPRitz check failed: {str(e)}")
 
-        # Fallback checks
+        # Bowtie fallback checks
         self.crispritz_available = False
         if not shutil.which(str(self.bowtie_path)):
             raise RuntimeError(f"Bowtie not found at {self.bowtie_path}")
         if not shutil.which("samtools"):
             raise RuntimeError("samtools required for Bowtie fallback not found in PATH")
+        if not self.reference_genome:
+            raise ValueError("reference_genome must be provided for Bowtie fallback")
         if not self.reference_genome.exists():
             raise FileNotFoundError(f"Reference genome {self.reference_genome} not found")
         
@@ -299,16 +301,6 @@ class OffTargetAnalyzer:
             except Exception as e:
                 logger.debug(f"Failed to delete {f}: {str(e)}")
 
-    def _validate_dependencies(self):
-        """Verify system dependencies"""
-        if not shutil.which(str(self.cas_offinder)):
-            raise FileNotFoundError(
-                f"Cas-OFFinder not found at {self.cas_offinder}. "
-                "Install from: https://github.com/snugel/cas-offinder"
-            )
-            
-        if not self.genome_index.exists():
-            raise FileNotFoundError(f"Genome FASTA not found: {self.genome_index}")
 
 class OffTargetResult(BaseModel):
     spacer: str
