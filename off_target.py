@@ -33,6 +33,10 @@ class OffTargetAnalyzer:
         self.output_dir.mkdir(parents=True, exist_ok=True)
 
     def analyze(self, spacer: str) -> list:
+        # Clean problematic characters
+        spacer = ''.join([c for c in spacer if c in 'ACGTacgt'])
+        if len(spacer) < 20:
+            raise ValueError(f"Invalid spacer: {spacer}")
         """Run CRISPRitz analysis and save full results with visualization"""
         try:
             # Create unique output directory with spacer hash
@@ -66,10 +70,11 @@ class OffTargetAnalyzer:
                 str(crispritz_path),
                 "search",
                 str(self.genome_index),
-                spacer[:28],  # CRISPRitz has 28-char limit for spacer names
+                spacer[:28],  # CRISPRitz has 28-char limit for target names
                 str(self.max_mismatches),
-                "-o", str(output_base),
+                "-o", str(output_dir/"results"),  # Without file extension
                 "-th", "4",
+                "-output", "txt",  # Force text output format
                 "-quiet"
             ]
             
