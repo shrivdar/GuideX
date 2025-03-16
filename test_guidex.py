@@ -154,20 +154,42 @@ def main():
             print("\n⚙️ Optimizing gRNAs...")
             try:
                 optimized_grnas = []
-                for grna in grnas:  # grna is gRNACandidate object
-                    optimized = optimizer.optimize(grna.sequence)
-                    optimized_grnas.append({
-                        "original": grna.sequence,
-                        "optimized": optimized,
-                        "offtarget_score": grna.offtarget_score
-                    })
-                    # Keep original object but add optimized sequence
-                    grna.optimized_sequence = optimized  
+                for grna in grnas:
+                    # Add validation check
+                    if not hasattr(optimizer, 'forward'):
+                        raise AttributeError("Optimizer missing required forward() method")
+                        
+                    # Add device awareness
+                    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+                    optimizer = optimizer.to(device)
                     
-                # Optional: Save optimization results separately
-                (output_dir / "optimized_grnas.json").write_text(json.dumps(optimized_grnas)) 
+                    # Track optimization progress
+                    print(f"🔧 Optimizing {grna.sequence[:8]}...")
+                    with torch.inference_mode():
+                        optimized = optimizer.optimize(grna.sequence)
+                    
+                    # Add result validation
+                    if self.designer.validate_grna(optimized):
+                        optimized_grnas.append(optimized)
+                        grna.optimized_sequence = optimized
+                        print(f"✅ Optimized: {optimized}")
+                    else:
+                        print(f"⚠️ Optimization failed for {grna.sequence}")
+            
+                # Save with plot status tracking
+                results = [{
+                    "original": g.sequence,
+                    "optimized": g.optimized_sequence,
+                    "offtargets": len(g.offtargets),
+                    "plot_exists": (output_dir / "off_targets" / f"{g.sequence[:8]}*/mismatch_distribution.png").exists()
+                } for g in grnas]
+                
+                (output_dir / "optimized_results.json").write_text(json.dumps(results))
+                
             except Exception as e:
                 print(f"⚠️ Optimization failed: {e}")
+                if "CUDA" in str(e):
+                    print("💡 Try installing CUDA drivers or running on CPU")
 
     except Exception as e:
         print(f"\n❌ Pipeline Error: {e}")
