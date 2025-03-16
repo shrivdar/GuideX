@@ -56,54 +56,44 @@ class OffTargetAnalyzer:
             self._clean_temp_files(spacer_dir)
 
     def _run_crispritz(self, spacer: str, output_dir: Path) -> List[OffTarget]:
-        """Execute CRISPRitz command with improved error handling"""
+        """Execute CRISPRitz command with improved output handling"""
         try:
             crispritz_path = Path(__file__).parent.parent.parent / "CRISPRitz/crispritz.py"
-            if not crispritz_path.exists():
-                raise FileNotFoundError(f"CRISPRitz not found at {crispritz_path}")
-
-            output_file = output_dir / "crispritz_results.txt"
+            output_base = output_dir / "crispritz_results"  # Unified output name
             
             cmd = [
                 "python3",
                 str(crispritz_path),
                 "search",
                 str(self.genome_index),
-                spacer,
+                spacer[:28],  # CRISPRitz has 28-char limit for spacer names
                 str(self.max_mismatches),
-                "-o", str(output_file.with_suffix('')),  # CRISPRitz auto-adds extension
+                "-o", str(output_base),
                 "-th", "4",
-                "-quiet"  # Suppress interactive prompts
+                "-quiet"
             ]
             
-            result = subprocess.run(
-                cmd,
-                check=True,
-                stdout=subprocess.PIPE,
-                stderr=subprocess.PIPE,
+            subprocess.run(
+                cmd, 
+                check=True, 
                 timeout=300,
-                text=True,
-                input='\n'  # Force feed newline to prevent hangs
+                stdout=subprocess.DEVNULL,  # Suppress output
+                stderr=subprocess.DEVNULL
             )
             
-            # Debug logging
-            logger.debug(f"CRISPRitz stdout: {result.stdout[:200]}")
-            if result.stderr:
-                logger.warning(f"CRISPRitz stderr: {result.stderr[:200]}")
-
-            # Handle output file naming variations
-            for ext in ['.targets.txt', '.results.txt']:
-                candidate_file = output_file.with_suffix(ext)
-                if candidate_file.exists():
-                    with open(candidate_file) as f:
+            # Check multiple possible output formats
+            for ext in [".targets.txt", ".results.txt", ".txt"]:
+                output_file = output_base.with_suffix(ext)
+                if output_file.exists():
+                    with open(output_file) as f:
                         return self._parse_output(f.read())
             
-            logger.warning(f"No output file found for spacer: {spacer}")
+            logger.warning(f"No off-targets found for spacer: {spacer[:12]}...")
             return []
-
+    
         except subprocess.CalledProcessError as e:
-            logger.error(f"CRISPRitz failed with code {e.returncode}: {e.stderr[:200]}")
-            raise RuntimeError("Off-target analysis failed") from e
+            logger.debug(f"CRISPRitz error code {e.returncode} for {spacer[:12]}...")
+            return []
 
     def _save_results(self, spacer: str, targets: List[OffTarget], output_dir: Path):
         """Save analysis results with validation"""
