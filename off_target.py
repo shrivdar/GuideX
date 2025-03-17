@@ -152,10 +152,20 @@ class OffTargetAnalyzer:
 
     def _run_crispritz(self, spacer: str, output_dir: Path) -> Optional[List[OffTarget]]:
         try:
-            # Add spacer validation
-            if not self._is_valid_spacer(spacer):
-                logger.error(f"Invalid spacer: {spacer} (length={len(spacer)})")
-                return []
+            # debug output
+            print(f"CRISPRitz command: {' '.join(cmd)}")  # Verify command structure
+            subprocess.run(cmd, check=True)
+            
+            # Add raw output inspection
+            with open(output_file) as f:
+                raw_data = f.read()
+                print(f"First 100 chars of output:\n{raw_data[:100]}...")
+            
+            return self._parse_output(raw_data)
+                    # Add spacer validation
+                    if not self._is_valid_spacer(spacer):
+                        logger.error(f"Invalid spacer: {spacer} (length={len(spacer)})")
+                        return []
                 
             # Add debug logging for raw command
             logger.debug(f"CRISPRitz command: {' '.join(cmd)}")
