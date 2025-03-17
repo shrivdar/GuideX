@@ -25,16 +25,16 @@ logger = logging.getLogger(__name__)  # Add this line
 
 LOCAL_GENOMES = [
     SeqRecord(
-        Seq(("ATGCGATAGCATCGACTAGCATGACGTACGTACGTACGTACGTACGTACGTACGTA" 
-             "ATGCGATAGCATCGACTAGCATGACGTACGTACGTACGTACGTACGTACGTACGTA") * 50),
-        id="Local_HA_1",
-        description="Test Strain A"
+        Seq(("ATGCGATAGCATCGACTAGCATGACGTACGTACGTACGTACGTACGTACGTACGTA"  # Known off-target rich
+             "GGTACCGAGCTCGTTAGCATGACGTACGTACGTACGTACGTACGTACGTACGTA") * 50),
+        id="Test_OffTarget_Rich",
+        description="Contains known off-target sequences"
     ),
     SeqRecord(
-        Seq(("ATGCGATAGCATCGACTAGCATGACGTACGTACGTACGTACGTACGTACGTACGTA" 
-             "ATGCGATAGCATCGACTAGCATGACGTACGTACGTACGTACGTACGTACGTACGTA".replace("C", "T", 10)) * 50),
-        id="Local_HA_2",
-        description="Test Strain B"
+        Seq(("ATGCGATAGCATCGACTAGCATGACGTACGTACGTACGTACGTACGTACGTACGTA"
+             "CCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCC") * 50),
+        id="Test_Control",
+        description="Low complexity control"
     )
 ]
 
