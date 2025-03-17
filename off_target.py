@@ -152,6 +152,13 @@ class OffTargetAnalyzer:
 
     def _run_crispritz(self, spacer: str, output_dir: Path) -> Optional[List[OffTarget]]:
         try:
+            print(f"\n🔧 DEBUG: Analyzing spacer - {spacer}")
+            print(f"🔧 DEBUG: Genome index path - {self.genome_index}")
+            
+            # Verify index files exist
+            index_files = list(self.genome_index.parent.glob(f"{self.genome_index.name}*.bt2"))
+            print(f"🔧 DEBUG: Found {len(index_files)} Bowtie index files")
+
             # debug output
             print(f"CRISPRitz command: {' '.join(cmd)}")  # Verify command structure
             subprocess.run(cmd, check=True)
@@ -170,22 +177,21 @@ class OffTargetAnalyzer:
             # Add debug logging for raw command
             logger.debug(f"CRISPRitz command: {' '.join(cmd)}")
             
-            # Run with output capture for debugging
+            # Run CRISPRitz with full output
             result = subprocess.run(
                 cmd,
                 check=True,
-                timeout=self.timeout,
                 capture_output=True,
-                text=True
+                text=True,
+                timeout=300
             )
-            logger.debug(f"CRISPRitz raw output:\n{result.stdout[:200]}...")  # First 200 chars
+            print(f"🔧 DEBUG: CRISPRitz stdout:\n{result.stdout[:500]}...")
+            print(f"🔧 DEBUG: CRISPRitz stderr: {result.stderr}")
             
-            # Parse output
-            return self._parse_crispritz_output(output_file)
-            
-        except subprocess.CalledProcessError as e:
-            logger.error(f"CRISPRitz failed with code {e.returncode}")
-            logger.debug(f"STDERR: {e.stderr}")  # Critical debug info
+            # Force parse even if empty
+            return self._parse_output(result.stdout) or []
+        except Exception as e:
+            print(f"🔥 CRISPRitz Critical Error: {str(e)}")
             return None
     
     def _is_valid_spacer(self, spacer: str) -> bool:
