@@ -160,38 +160,36 @@ class OffTargetAnalyzer:
             raise FileNotFoundError(f"Missing index files: {missing[:3]}...")
 
     def _run_crispritz(self, spacer: str, output_dir: Path) -> Optional[List[OffTarget]]:
-        """Execute CRISPRitz with enhanced error handling"""
         try:
-            output_base = output_dir / "crispritz_results"
-            cmd = [
-                "python3", str(self.crispritz_path),
-                "search",
-                str(self.genome_index),
-                spacer[:28],
-                str(self.max_mismatches),
-                "-o", str(output_base),
-                "-th", str(self.threads),
-                "-quiet"
-            ]
+            # Add spacer validation
+            if not self._is_valid_spacer(spacer):
+                logger.error(f"Invalid spacer: {spacer} (length={len(spacer)})")
+                return []
+                
+            # Add debug logging for raw command
+            logger.debug(f"CRISPRitz command: {' '.join(cmd)}")
             
-            subprocess.run(
+            # Run with output capture for debugging
+            result = subprocess.run(
                 cmd,
                 check=True,
                 timeout=self.timeout,
-                stdout=subprocess.DEVNULL,
-                stderr=subprocess.DEVNULL
+                capture_output=True,
+                text=True
             )
-
-            for ext in [".targets.txt", ".results.txt", ".txt"]:
-                output_file = output_base.with_suffix(ext)
-                if output_file.exists():
-                    return self._parse_crispritz_output(output_file)
+            logger.debug(f"CRISPRitz raw output:\n{result.stdout[:200]}...")  # First 200 chars
             
-            return []
-
-        except Exception as e:
-            logger.error(f"CRISPRitz failed: {str(e)}")
+            # Parse output
+            return self._parse_crispritz_output(output_file)
+            
+        except subprocess.CalledProcessError as e:
+            logger.error(f"CRISPRitz failed with code {e.returncode}")
+            logger.debug(f"STDERR: {e.stderr}")  # Critical debug info
             return None
+    
+    def _is_valid_spacer(self, spacer: str) -> bool:
+        """Validate spacer sequence before analysis"""
+        return len(spacer) >= 20 and all(c in 'ACGT' for c in spacer.upper())
 
     def _run_bowtie(self, spacer: str, output_dir: Path) -> List[OffTarget]:
         """Execute Bowtie alignment with sequence extraction"""
