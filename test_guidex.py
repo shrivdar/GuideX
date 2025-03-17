@@ -19,6 +19,7 @@ from guidex.grna.off_target import OffTargetAnalyzer
 from guidex.grna.optimizer import Cas13Optimizer
 import torch
 import logging
+import json
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)  # Add this line
 
@@ -172,8 +173,12 @@ def main():
                     "sequence": grna.sequence,
                     "offtarget_count": grna.offtarget_score
                 })
-
-            # Save analysis summary
+        
+            # Add json import verification
+            if 'json' not in globals():
+                raise ImportError("JSON module not loaded")
+                
+            # Now safe to use json.dumps
             analysis_summary = {
                 "total_grnas": len(grnas),
                 "grnas_with_offtargets": sum(1 for g in grnas if g.offtarget_score > 0),
