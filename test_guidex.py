@@ -63,7 +63,12 @@ def main():
         aligner = AlignmentEngine(max_threads=8)
         conservator = ConservationAnalyzer(window_size=30)
         designer = Cas13gRNADesigner()
-        ot_analyzer = OffTargetAnalyzer(Path("genomes/hg38"))
+        ot_analyzer = OffTargetAnalyzer(
+            genome_index=Path("genomes/hg38/hg38"),  # Path to Bowtie2 index prefix
+            reference_genome=Path("genomes/hg38.fa"),  # Path to reference FASTA
+            max_mismatches=3,
+            output_dir=Path("results/off_targets")
+        )
         optimizer = Cas13Optimizer(designer)
         
         # Load model weights if available
