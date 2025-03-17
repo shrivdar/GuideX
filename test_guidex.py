@@ -40,11 +40,15 @@ LOCAL_GENOMES = [
 
 def main():
     try:
-        # Clear previous runs
+        # Initialize with debug logging
+        logging.basicConfig(level=logging.INFO)
+        logger.info("🚀 Starting GuideX pipeline")
+        
+        # Clean previous runs
         shutil.rmtree("alignments", ignore_errors=True)
         shutil.rmtree("results", ignore_errors=True)
 
-        # Initialize components
+        # Component initialization
         fetcher = GenomeFetcher(api_key=os.getenv("NCBI_API_KEY_2025"))
         aligner = AlignmentEngine(max_threads=8)
         conservator = ConservationAnalyzer(window_size=30)
@@ -52,16 +56,17 @@ def main():
         ot_analyzer = OffTargetAnalyzer(Path("genomes/hg38"))
         optimizer = Cas13Optimizer(designer)
         
+        # Load model weights if available
         if Path("weights/optimizer.pth").exists():
             optimizer.load_state_dict(torch.load("weights/optimizer.pth"))
 
         # Genome acquisition
         genomes = []
         try:
-            print("🕵️ Attempting NCBI Datasets API v2 fetch...")
+            logger.info("🕵️ Attempting NCBI fetch...")
             genomes = fetcher.fetch_genomes(
-                target="Influenza A virus",  # Official taxonomy name
-                gene="HA",                   # Hemagglutinin gene symbol
+                target="Influenza A virus",
+                gene="HA",
                 genome_type="gene",
                 limit=10
             )
@@ -148,60 +153,66 @@ def main():
         print(f"\n📁 Results saved to {output_dir}/")
 
         if grnas:
-            print("\n🔍 Running off-target analysis...")
+            logger.info("\n🔍 Running off-target analysis...")
+            ot_results = []
+            
             for grna in grnas:
                 grna.offtargets = ot_analyzer.analyze(grna.sequence)
                 grna.offtarget_score = len(grna.offtargets)
-        
-            print("\n⚙️ Optimizing gRNAs...")
-            try:
-                optimized_grnas = []
-                for grna in grnas:
-                    # Add validation check
-                    if not hasattr(optimizer, 'forward'):
-                        raise AttributeError("Optimizer missing required forward() method")
-                        
-                    # Add device awareness
-                    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-                    optimizer = optimizer.to(device)
-                    
-                    # Track optimization progress
-                    print(f"🔧 Optimizing {grna.sequence[:8]}...")
-                    with torch.inference_mode():
-                        optimized = optimizer.optimize(grna.sequence)
-                    
-                    # Add result validation
-                    if self.designer.validate_grna(optimized):
-                        optimized_grnas.append(optimized)
-                        grna.optimized_sequence = optimized
-                        print(f"✅ Optimized: {optimized}")
-                    else:
-                        print(f"⚠️ Optimization failed for {grna.sequence}")
+                ot_results.append({
+                    "sequence": grna.sequence,
+                    "offtarget_count": grna.offtarget_score
+                })
+
+            # Save analysis summary
+            analysis_summary = {
+                "total_grnas": len(grnas),
+                "grnas_with_offtargets": sum(1 for g in grnas if g.offtarget_score > 0),
+                "details": ot_results
+            }
+            (output_dir / "offtarget_summary.json").write_text(json.dumps(analysis_summary))
             
-                # Save with plot status tracking
-                results = [{
-                    "original": g.sequence,
-                    "optimized": g.optimized_sequence,
-                    "offtargets": len(g.offtargets),
-                    "plot_exists": (output_dir / "off_targets" / f"{g.sequence[:8]}*/mismatch_distribution.png").exists()
-                } for g in grnas]
+            logger.info("\n⚙️ Optimizing gRNAs...")
+            try:
+                device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+                logger.info(f"Using compute device: {device}")
+                optimizer = optimizer.to(device)
                 
-                (output_dir / "optimized_results.json").write_text(json.dumps(results))
+                optimized_results = []
+                for grna in grnas:
+                    try:
+                        optimized = optimizer.optimize(grna.sequence)
+                        optimized_results.append({
+                            "original": grna.sequence,
+                            "optimized": optimized,
+                            "offtarget_score": grna.offtarget_score
+                        })
+                    except Exception as e:
+                        logger.debug(f"Optimization failed for {grna.sequence[:8]}: {str(e)}")
+                        
+                # Save optimization results
+                (output_dir / "optimized_grnas.json").write_text(json.dumps(optimized_results))
                 
             except Exception as e:
-                print(f"⚠️ Optimization failed: {e}")
+                logger.error(f"Optimization error: {str(e)}")
                 if "CUDA" in str(e):
-                    print("💡 Try installing CUDA drivers or running on CPU")
+                    logger.info("💡 Try running on CPU: export CUDA_VISIBLE_DEVICES=''")
+
+        # Final report
+        logger.info("\n📊 Final Report")
+        logger.info("▔▔▔▔▔▔▔▔▔▔▔")
+        logger.info(f"Total gRNAs designed: {len(grnas)}")
+        if grnas:
+            logger.info(f"gRNAs with off-targets: {analysis_summary['grnas_with_offtargets']}")
+            logger.info(f"Optimized gRNAs: {len(optimized_results)}")
+        logger.info(f"Results directory: {output_dir.absolute()}")
 
     except Exception as e:
-        print(f"\n❌ Pipeline Error: {e}")
-        print("💡 Final Verification Steps:")
-        print("1. Check RNAfold output manually:")
-        print(f"   echo '>TEST\nATGCGATAGCAT' | RNAfold --noPS")
-        print("2. Validate alignment file:")
-        print("   muscle -in alignments/INPUT.fasta -out test.fasta")
-        print("3. Test conservation analysis:")
-        print("   python3 -m guidex.conservation alignments/INPUT.fasta")
+        logger.error(f"\n❌ Pipeline Error: {e}")
+        logger.info("💡 Debug Steps:")
+        logger.info("1. Verify input sequences with: echo 'ATGCGATAGCAT' | RNAfold --noPS")
+        logger.info("2. Check alignment file: muscle -in alignments/INPUT.fasta")
+        logger.info("3. Test conservation: python3 -m guidex.conservation alignments/INPUT.fasta")
         sys.exit(1)
 
 if __name__ == "__main__":
