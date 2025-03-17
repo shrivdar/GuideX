@@ -28,22 +28,20 @@ class Cas13Optimizer(nn.Module):
             nn.Dropout(0.2)
         )
         
-        # Modify the LSTM layer to match conv output
+        # Modify the network architecture
         self.lstm = nn.LSTM(
-            input_size=32,  # Must match conv output channels (was 64)
+            input_size=32,  # Must match conv output channels
             hidden_size=self.embed_size,
             bidirectional=True
         )
         
-        # Update attention layer
         self.attention = nn.MultiheadAttention(
-            embed_dim=64,  # 32 * 2 (bidirectional)
+            embed_dim=self.embed_size*2,  # 64 * 2 for bidirectional
             num_heads=4
         )
         
-        # Adjust classifier input
         self.classifier = nn.Sequential(
-            nn.Linear(128, 32),  # 64 (lstm) + 64 (attention)
+            nn.Linear(self.embed_size*4, 32),  # 128 input (64*2 from LSTM + 64 from attention)
             nn.ReLU(),
             nn.Linear(32, 1),
             nn.Sigmoid()
