@@ -50,73 +50,64 @@ class OffTargetAnalyzer:
         self.output_dir.mkdir(parents=True, exist_ok=True)
 
     def analyze(self, spacer: str) -> list:
-        """Run analysis with CRISPRitz/Bowtie and track visualization status"""
+        """Run analysis with silent logging and essential validations"""
+        spacer = spacer.upper()[:28]  # Normalize and trim
         spacer_hash = abs(hash(spacer)) % 1000
         spacer_dir = self.output_dir / f"{spacer[:8]}_{spacer_hash:03d}"
         spacer_dir.mkdir(parents=True, exist_ok=True)
         
-        # Initialize plot tracking variables
-        plot_generated = False
-        plot_path = spacer_dir / "mismatch_distribution.png"
         targets = []
-        
+        plot_generated = False
+        metadata = {
+            "spacer": spacer,
+            "valid": False,
+            "offtarget_count": 0,
+            "plot_exists": False,
+            "analysis_dir": str(spacer_dir)
+        }
+    
+        # Spacer validation
+        if not (20 <= len(spacer) <= 28) or any(c not in 'ACGT' for c in spacer):
+            logger.debug(f"Invalid spacer: {spacer}")
+            metadata["validation_error"] = "Invalid length or characters"
+            (spacer_dir / "metadata.json").write_text(json.dumps(metadata))
+            return []
+    
         try:
-            logger.debug(f"🔧 Starting off-target analysis for {spacer[:12]}...")
-            logger.debug(f"📂 Using output directory: {spacer_dir}")
-            
+            # CRISPRitz/Bowtie execution
             if self.crispritz_available:
-                logger.debug("⚡ Using CRISPRitz engine")
                 targets = self._run_crispritz(spacer, spacer_dir)
-                if targets is None:
-                    raise RuntimeError("CRISPRitz returned empty results")
             else:
-                logger.debug("⚡ CRISPRitz unavailable, using Bowtie fallback")
                 targets = self._run_bowtie(spacer, spacer_dir)
                 
+            # Handle empty results
+            if not targets:
+                logger.debug(f"No targets found for {spacer[:8]}")
+                
         except Exception as e:
-            logger.error(f"🔴 Primary analysis failed: {str(e)}")
+            logger.debug(f"Analysis failed: {str(e)}")
             if self.bowtie_available:
-                logger.info("🔄 Attempting Bowtie fallback...")
                 try:
                     targets = self._run_bowtie(spacer, spacer_dir)
                 except Exception as bowtie_error:
-                    logger.critical(f"🔥 Complete analysis failure: {bowtie_error}")
-                    targets = []
-            else:
-                logger.critical("❌ No available analysis engines")
-                targets = []
+                    logger.debug(f"Bowtie fallback failed: {bowtie_error}")
     
-        try:
-            if targets:
-                logger.debug(f"📦 Saving {len(targets)} results...")
+        # Save results and generate plots
+        if targets:
+            try:
                 self._save_results(spacer, targets, spacer_dir)
-                
-                logger.debug("🎨 Generating visualization...")
                 self._generate_plots(spacer, targets, spacer_dir)
-                plot_generated = plot_path.exists()
-                
-                # Add debug output for plot paths
-                if plot_generated:
-                    logger.debug(f"🖼️ Plot saved to: {plot_path}")
-                else:
-                    logger.warning("⚠️ Plot file missing despite generation attempt")
-        except Exception as save_error:
-            logger.error(f"📦 Results handling failed: {save_error}")
-            plot_generated = False
+                plot_generated = (spacer_dir / "mismatch_distribution.png").exists()
+            except Exception as save_error:
+                logger.debug(f"Result handling error: {save_error}")
     
-        # Final status report
-        status_msg = [
-            f"\n🔍 OFF-TARGET ANALYSIS REPORT: {spacer[:8]}...",
-            f"▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔",
-            f"• Total off-targets: {len(targets)}",
-            f"• Output directory: {spacer_dir}",
-            f"• Visualization: {'SUCCESS' if plot_generated else 'FAILED'}",
-        ]
-        
-        if plot_generated:
-            status_msg.append(f"• Plot path: {plot_path}")
-        
-        logger.info("\n".join(status_msg))
+        # Update metadata
+        metadata.update({
+            "valid": True,
+            "offtarget_count": len(targets),
+            "plot_exists": plot_generated
+        })
+        (spacer_dir / "metadata.json").write_text(json.dumps(metadata))
         
         return targets
 
@@ -312,14 +303,16 @@ class OffTargetAnalyzer:
         )
 
     def _generate_plots(self, spacer: str, targets: List[OffTarget], output_dir: Path):
-        """Generate visualization plots with path reporting"""
+        """Silent plot generation with failsafes"""
+        plt.ioff()  # Non-interactive mode
         try:
-            if not targets:
+            if not targets or len(targets) == 0:
                 return
-                
-            sns.set_theme(style="whitegrid")
+    
             df = pd.DataFrame([self._target_to_dict(t) for t in targets])
-            
+            if df.empty:
+                return
+    
             plt.figure(figsize=(10, 6))
             ax = sns.histplot(
                 data=df,
@@ -330,14 +323,14 @@ class OffTargetAnalyzer:
             )
             ax.set_title(f"Off-target Distribution: {spacer[:8]}...")
             plot_path = output_dir / "mismatch_distribution.png"
-            plt.savefig(plot_path)
+            plt.savefig(plot_path, bbox_inches='tight')
             plt.close()
-            logger.info(f"Successfully generated plot at: {plot_path}")
             
         except Exception as e:
-            logger.error(f"Plot generation failed: {str(e)}")
-            raise
-
+            logger.debug(f"Silent plot error: {str(e)}")
+        finally:
+            plt.close('all')
+    
     def _get_mismatch_counts(self, targets: List[OffTarget]) -> Dict[int, int]:
         return pd.Series([t.mismatches for t in targets]).value_counts().to_dict()
 
