@@ -163,9 +163,9 @@ class OffTargetAnalyzer:
             
             return self._parse_output(raw_data)
                     # Add spacer validation
-                    if not self._is_valid_spacer(spacer):
-                        logger.error(f"Invalid spacer: {spacer} (length={len(spacer)})")
-                        return []
+            if not self._is_valid_spacer(spacer):
+                logger.error(f"Invalid spacer: {spacer} (length={len(spacer)})")
+                return []
                 
             # Add debug logging for raw command
             logger.debug(f"CRISPRitz command: {' '.join(cmd)}")
