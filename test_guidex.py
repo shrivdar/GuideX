@@ -18,6 +18,8 @@ from guidex.core import Cas13gRNADesigner
 from guidex.grna.off_target import OffTargetAnalyzer
 from guidex.grna.optimizer import Cas13Optimizer
 import torch
+import logging
+logging.basicConfig(level=logging.INFO)
 
 LOCAL_GENOMES = [
     SeqRecord(
