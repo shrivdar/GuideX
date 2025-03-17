@@ -20,6 +20,7 @@ from guidex.grna.optimizer import Cas13Optimizer
 import torch
 import logging
 logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)  # Add this line
 
 LOCAL_GENOMES = [
     SeqRecord(
@@ -43,7 +44,15 @@ def main():
         # Initialize with debug logging
         logging.basicConfig(level=logging.INFO)
         logger.info("🚀 Starting GuideX pipeline")
-        
+        logging.basicConfig(
+            level=logging.INFO,
+            format='%(message)s',  # Clean format without module names
+            handlers=[
+                logging.FileHandler("guidex.log"),  # Save to file
+                logging.StreamHandler()  # Console output
+            ]
+        )
+        logger.info("🚀 Starting GuideX pipeline")
         # Clean previous runs
         shutil.rmtree("alignments", ignore_errors=True)
         shutil.rmtree("results", ignore_errors=True)
