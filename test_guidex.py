@@ -170,28 +170,36 @@ def main():
 
         # Conservation analysis with adaptive thresholds
         print("\n🔎 Identifying conserved regions...")
-        jsd_scores = conservator.calculate_jsd(aligned_file)
+        try:
+            jsd_scores, valid_regions = conservator.calculate_jsd(aligned_file)
+            logger.info(f"Analyzed {valid_regions} valid genomic regions")
+            
+            if not jsd_scores:
+                raise ValueError("All JSD scores were invalid - check alignment quality")
         
-        # Dynamic threshold adjustment
-        max_jsd = max(jsd_scores) if jsd_scores else 0
-        conserved_regions = []
-        thresholds = [
-            0.8, 
-            0.7, 
-            0.6, 
-            max(0.15, max_jsd * 0.9),  # Ensures minimum threshold
-            max_jsd - 0.05             # Catch borderline cases
-        ]  # More conservative
+            # Filter NaN scores
+            clean_scores = [s for s in jsd_scores if not np.isnan(s)]
+            max_jsd = max(clean_scores) if clean_scores else 0
+            min_jsd = min(clean_scores) if clean_scores else 0
+            
+            # Dynamic threshold adjustment
+            thresholds = [
+                max_jsd * 0.9,
+                max_jsd * 0.8,
+                max(min_jsd + 0.2, 0.6),  # Fallback threshold
+                0.5  # Absolute minimum
+            ]
         
-        for threshold in thresholds:
-            conserved_regions = [(i, i+30) for i, score in enumerate(jsd_scores) if score > threshold]
-            if conserved_regions:
-                print(f"✅ Found {len(conserved_regions)} regions at JSD > {threshold:.2f}")
-                break
+            conserved_regions = []
+            for threshold in thresholds:
+                conserved_regions = [(i, i+30) for i, score in enumerate(jsd_scores) 
+                                   if not np.isnan(score) and score > threshold]
+                if conserved_regions:
+                    logger.info(f"Found {len(conserved_regions)} regions at JSD > {threshold:.2f}")
+                    break
         
-        if not conserved_regions:
-            print(f"⚠️ No conserved regions found (max JSD: {max_jsd:.2f})")
-            print("💡 Try providing more similar sequences or adjust conservation thresholds")
+        except Exception as e:
+            logger.error(f"Conservation analysis failed: {str(e)}")
             conserved_regions = []
                     
         print(f"✅ Found {len(conserved_regions)} conserved regions")
