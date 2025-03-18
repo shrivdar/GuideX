@@ -18,18 +18,39 @@ class ConservationAnalyzer:
         self.max_gap = 0.9    # Maximum allowed gap proportion per column
 
     def calculate_jsd(self, aligned_file: Path) -> Tuple[List[float], int]:
-        """Calculate JSD scores with gap filtering and NaN handling"""
-        try:
-            msa = self._load_and_filter_alignment(aligned_file)
-            if len(msa) < 2:
-                raise ValueError("At least 2 sequences required for conservation analysis")
+        """Calculate Jensen-Shannon Divergence with validation"""
+        alignment = AlignIO.read(aligned_file, "fasta")
+        jsd_scores = []
+        valid_regions = 0
+        
+        # Add epsilon to avoid division by zero
+        epsilon = 1e-10
+        
+        for i in range(0, len(alignment[0]), self.window_size):
+            window = alignment[:, i:i+self.window_size]
+            if len(window) < 2:  # Skip single-sequence windows
+                continue
+                
+            freqs = []
+            valid_window = True
             
-            logger.info(f"Analyzing conservation for {len(msa)} sequences")
-            return self._safe_windowed_analysis(msa)
-            
-        except Exception as e:
-            logger.error(f"Conservation analysis failed: {str(e)}")
-            raise
+            for seq in window:
+                count = Counter(seq)
+                total = sum(count.values()) + epsilon
+                freq = np.array([(count.get(b, 0)+epsilon)/total for b in 'ACGT-'])
+                if np.any(np.isnan(freq)):
+                    valid_window = False
+                    break
+                freqs.append(freq)
+                
+            if valid_window and len(freqs) > 1:
+                jsd = 0
+                for j in range(1, len(freqs)):
+                    jsd += distance.jensenshannon(freqs[0], freqs[j], 2.0)
+                jsd_scores.append(jsd/len(freqs))
+                valid_regions += 1
+    
+        return jsd_scores, valid_regions
 
     def _load_and_filter_alignment(self, path: Path) -> TabularMSA:
         """Load MSA and filter gap-heavy columns"""
