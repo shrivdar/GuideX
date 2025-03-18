@@ -236,6 +236,12 @@ def main():
         
         print(f"✅ Found {len(conserved_regions)} conserved regions")
         
+        if not isinstance(jsd_scores, list) or not isinstance(valid_regions, int):
+            logger.error("🆘 Critical: Invalid return types from conservation analyzer!")
+            logger.error(f"Got types: {type(jsd_scores)}, {type(valid_regions)}")
+            jsd_scores = []
+            valid_regions = 0
+            
         # Enhanced visualization with debug features
         Path("results").mkdir(parents=True, exist_ok=True)
         try:
