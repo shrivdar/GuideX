@@ -1,6 +1,6 @@
 import numpy as np
 from pathlib import Path
-from typing import List
+from typing import List, Tuple
 from skbio import DNA, TabularMSA
 from scipy.spatial.distance import jensenshannon
 import plotly.express as px
@@ -9,31 +9,103 @@ from guidex.utils.logger import setup_logger
 logger = setup_logger(__name__)
 
 class ConservationAnalyzer:
-    """Conservation analysis pipeline for aligned genomes"""
+    """Enhanced conservation analysis with NaN handling and gap filtering"""
     
     def __init__(self, window_size: int = 30):
         self.window_size = window_size
         self.min_conservation = 0.7
+        self.epsilon = 1e-10  # Smoothing factor for zero probabilities
+        self.max_gap = 0.9    # Maximum allowed gap proportion per column
 
-    def calculate_jsd(self, aligned_file: Path) -> List[float]:
-        """Calculate Jensen-Shannon Divergence scores for aligned sequences"""
-        # Validate alignment file
-        if not aligned_file.exists():
-            raise FileNotFoundError(f"Alignment file missing: {aligned_file}")
-        
+    def calculate_jsd(self, aligned_file: Path) -> Tuple[List[float], int]:
+        """Calculate JSD scores with gap filtering and NaN handling"""
         try:
-            # Load and validate alignment
-            msa = self._load_alignment(aligned_file)
+            msa = self._load_and_filter_alignment(aligned_file)
             if len(msa) < 2:
                 raise ValueError("At least 2 sequences required for conservation analysis")
             
-            # Calculate conservation scores
             logger.info(f"Analyzing conservation for {len(msa)} sequences")
-            return self._windowed_analysis(msa)
+            return self._safe_windowed_analysis(msa)
             
         except Exception as e:
             logger.error(f"Conservation analysis failed: {str(e)}")
             raise
+
+    def _load_and_filter_alignment(self, path: Path) -> TabularMSA:
+        """Load MSA and filter gap-heavy columns"""
+        msa = TabularMSA.read(str(path), constructor=DNA)
+        
+        # Convert to gap-filtered numpy array
+        seq_array = np.array([list(str(seq)) for seq in msa])
+        gap_freq = np.mean(seq_array == '-', axis=0)
+        valid_cols = gap_freq <= self.max_gap
+        filtered = seq_array[:, valid_cols]
+        
+        logger.info(f"Filtered {len(gap_freq)-sum(valid_cols)}/{len(gap_freq)} gap-heavy columns")
+        return TabularMSA([DNA(''.join(row)) for row in filtered])
+
+    def _safe_windowed_analysis(self, msa: TabularMSA) -> Tuple[List[float], int]:
+        """JSD calculation with numerical stability checks"""
+        seq_array = np.array([[nt for nt in str(seq)] for seq in msa])
+        num_seqs, seq_len = seq_array.shape
+        scores = []
+        valid_windows = 0
+
+        for i in range(0, seq_len - self.window_size + 1):
+            window_scores = []
+            for j in range(i, i + self.window_size):
+                if j >= seq_len:
+                    break
+                
+                col = seq_array[:, j]
+                if self._is_invalid_column(col):
+                    continue
+
+                # Calculate pairwise JSD with smoothing
+                jsds = []
+                for k in range(num_seqs):
+                    for l in range(k+1, num_seqs):
+                        p = self._safe_frequencies(col[k])
+                        q = self._safe_frequencies(col[l])
+                        jsd = self._safe_jsd(p, q)
+                        if not np.isnan(jsd):
+                            jsds.append(jsd)
+                
+                if jsds:
+                    window_scores.append(np.mean(jsds))
+                    valid_windows += 1
+            
+            if window_scores:
+                scores.extend(window_scores)
+
+        return scores, valid_windows
+
+    def _safe_frequencies(self, nucleotide: str) -> np.ndarray:
+        """Frequency calculation with pseudocounts and smoothing"""
+        counts = np.ones(4) * 0.25  # Stronger pseudocounts
+        nt_map = {'A':0, 'C':1, 'G':2, 'T':3}
+        
+        if nucleotide.upper() in nt_map:
+            counts[nt_map[nucleotide.upper()]] += 1.0
+            
+        return counts / (np.sum(counts) + self.epsilon)
+
+    def _safe_jsd(self, p: np.ndarray, q: np.ndarray) -> float:
+        """Numerically stable JSD calculation"""
+        with np.errstate(divide='ignore', invalid='ignore'):
+            p_norm = p / (np.sum(p) + self.epsilon)
+            q_norm = q / (np.sum(q) + self.epsilon)
+            
+            if np.any(np.isnan(p_norm)) or np.any(np.isnan(q_norm)):
+                return np.nan
+                
+            jsd = jensenshannon(p_norm, q_norm) ** 2
+            return jsd if not np.isnan(jsd) else 0.0
+
+    def _is_invalid_column(self, col: np.ndarray) -> bool:
+        """Check for uninformative columns"""
+        unique = len(set(col))
+        return (unique < 2) or (np.mean(col == '-') > self.max_gap)
 
     def plot_conservation(self, scores: List[float], output_file: Path) -> None:
         """Generate interactive conservation plot"""
