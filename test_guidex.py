@@ -103,26 +103,6 @@ LOCAL_GENOMES = [
 
 def main():
     try:
-        # Add version debug
-        logger.debug(f"Python version: {sys.version}")
-        logger.debug(f"PyTorch version: {torch.__version__}")
-        logger.debug(f"NumPy version: {np.__version__}")
-
-        # Initialize with debug logging
-        debug_mode = os.getenv('GUIDEX_DEBUG', 'false').lower() == 'true'
-        if debug_mode:
-            logging.basicConfig(
-                level=logging.DEBUG,
-                format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
-                handlers=[
-                    logging.FileHandler("guidex.debug.log"),
-                    logging.StreamHandler()
-                ]
-            )
-            logger.info("🐛 DEBUG MODE ACTIVATED")
-
-def main():
-    try:
         # Initialize debug mode first
         debug_mode = os.getenv('GUIDEX_DEBUG', 'false').lower() == 'true'
         log_level = logging.DEBUG if debug_mode else logging.INFO
@@ -242,17 +222,34 @@ def main():
                 plt.close()
                 logger.debug("Saved raw conservation plot")
 
-            # Threshold adaptation debugging
+            # Threshold calculation with error handling
+            clean_scores = [s for s in jsd_scores if not np.isnan(s)]
+            
+            # Calculate thresholds safely
+            try:
+                threshold1 = max(clean_scores) * 0.9 if clean_scores else 0
+                threshold2 = max(clean_scores) * 0.8 if clean_scores else 0
+                min_score = min(clean_scores) if clean_scores else 0
+                threshold3 = max(min_score + 0.2, 0.6) if clean_scores else 0.6
+            except Exception as e:
+                logger.error(f"Threshold calculation failed: {str(e)}")
+                threshold1, threshold2, threshold3 = 0, 0, 0.6
+            
+            # Final threshold list
             thresholds = [
-                (max(clean_scores) * 0.9 if clean_scores else 0,
-                (max(clean_scores) * 0.8 if clean_scores else 0,
-                max(  # Properly structured max call
-                    (min(clean_scores) + 0.2 if clean_scores else 0, 
-                    0.6
-                ),
-                0.5
+                threshold1,  # 90% of max
+                threshold2,  # 80% of max 
+                threshold3,  # min+20% or 0.6
+                0.5          # fallback
             ]
-
+            
+            if debug_mode:
+                logger.debug("Computed Thresholds:")
+                logger.debug(f"1. {threshold1:.3f} (90% of max)")
+                logger.debug(f"2. {threshold2:.3f} (80% of max)")
+                logger.debug(f"3. {threshold3:.3f} (min+20% vs 0.6)")
+                logger.debug(f"4. 0.500 (fixed fallback)")
+                
             conserved_regions = []
             for i, threshold in enumerate(thresholds):
                 current_regions = [(pos, pos+30) for pos, s in enumerate(jsd_scores)
@@ -261,7 +258,9 @@ def main():
                     logger.debug(f"Threshold {i+1} ({threshold:.3f}): {len(current_regions)} regions")
                     if current_regions:
                         logger.debug(f" Example region: {current_regions[0][0]}-{current_regions[0][1]}")
-                        logger.debug(f" Region scores: {jsd_scores[current_regions[0][0]:.3f}-{jsd_scores[current_regions[0][1]:.3f}")
+                        logger.debug(f" Region scores: "
+                                     f"{(jsd_scores[current_regions[0][0]]):.3f}-"
+                                     f"{(jsd_scores[current_regions[0][1]]):.3f}")    
 
                 if current_regions:
                     conserved_regions = current_regions
