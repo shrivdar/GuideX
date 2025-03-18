@@ -23,8 +23,7 @@ class AlignmentEngine:
     def _setup_parameters(self):
         """Updated parameters for MUSCLE v5+"""
         self.muscle_params = [
-            "-super5",          # Use ultra-fast alignment algorithm
-            "-threads", str(self.max_threads),
+            f"-threads={self.max_threads}",  # Use equals syntax
             "-quiet"
         ]
 
@@ -63,12 +62,14 @@ class AlignmentEngine:
         return self._run_alignment(input_path, output_dir)
 
     def _run_alignment(self, input_file: Path, output_dir: Path) -> Path:
-        """Updated alignment logic for MUSCLE v5"""
+        """Core alignment logic with corrected command structure"""
         output_file = output_dir / "ALIGNMENT_OUT.fasta"
         
         try:
-            command = ["muscle"] + self.muscle_params + [
-                str(input_file),
+            command = [
+                "muscle",
+                "-super5", str(input_file),  # Input file must come immediately after -super5
+                *self.muscle_params,
                 "-output", str(output_file)
             ]
             logger.info(f"Executing: {' '.join(command)}")
