@@ -100,6 +100,8 @@ LOCAL_GENOMES = [
 
 def main():
     try:
+        jsd_scores = []
+        valid_regions = 0
         # Initialize with debug logging
         logging.basicConfig(level=logging.INFO)
         logger.info("🚀 Starting GuideX pipeline")
@@ -170,44 +172,92 @@ def main():
 
         # Conservation analysis with adaptive thresholds
         print("\n🔎 Identifying conserved regions...")
+        debug_mode = os.getenv('GUIDEX_DEBUG', 'false').lower() == 'true'  # New debug flag
+        
         try:
+            # Core analysis remains the same
             jsd_scores, valid_regions = conservator.calculate_jsd(aligned_file)
             logger.info(f"Analyzed {valid_regions} valid genomic regions")
             
+            if debug_mode:
+                logger.debug(f"Raw JSD data count: {len(jsd_scores)}")
+                logger.debug(f"Initial NaN count: {sum(np.isnan(s) for s in jsd_scores)}")
+        
             if not jsd_scores:
                 raise ValueError("All JSD scores were invalid - check alignment quality")
         
-            # Filter NaN scores
+            # Enhanced NaN filtering with debug info
             clean_scores = [s for s in jsd_scores if not np.isnan(s)]
-            max_jsd = max(clean_scores) if clean_scores else 0
-            min_jsd = min(clean_scores) if clean_scores else 0
-            
-            # Dynamic threshold adjustment
-            thresholds = [
-                max_jsd * 0.9,
-                max_jsd * 0.8,
-                max(min_jsd + 0.2, 0.6),  # Fallback threshold
-                0.5  # Absolute minimum
-            ]
+            if debug_mode:
+                logger.debug(f"Filtered {len(jsd_scores)-len(clean_scores)} NaN values")
+                logger.debug(f"Score range: {np.nanmin(jsd_scores):.3f}-{np.nanmax(jsd_scores):.3f}")
         
+            # Threshold calculation with debug logging
+            thresholds = [
+                (max(clean_scores) * 0.9) if clean_scores else 0,
+                (max(clean_scores) * 0.8) if clean_scores else 0,
+                max((min(clean_scores) + 0.2 if clean_scores else 0), 0.6),
+                0.5
+            ]
+            if debug_mode:
+                logger.debug(f"Threshold sequence: {[f'{t:.3f}' for t in thresholds]}")
+        
+            # Enhanced threshold testing with debug output
             conserved_regions = []
-            for threshold in thresholds:
-                conserved_regions = [(i, i+30) for i, score in enumerate(jsd_scores) 
-                                   if not np.isnan(score) and score > threshold]
-                if conserved_regions:
-                    logger.info(f"Found {len(conserved_regions)} regions at JSD > {threshold:.2f}")
+            for i, threshold in enumerate(thresholds):
+                current_regions = [(i, i+30) for i, s in enumerate(jsd_scores)
+                                  if not np.isnan(s) and s > threshold]
+                
+                if debug_mode:
+                    logger.debug(f"Threshold {i+1} ({threshold:.3f}): {len(current_regions)} candidates")
+                
+                if current_regions:
+                    conserved_regions = current_regions
+                    logger.info(f"Selected threshold {threshold:.3f} with {len(conserved_regions)} regions")
                     break
+        
+            if debug_mode and not conserved_regions:
+                logger.debug("No conserved regions found across all thresholds")
         
         except Exception as e:
             logger.error(f"Conservation analysis failed: {str(e)}")
+            if debug_mode:
+                logger.error(f"Error details:\n{traceback.format_exc()}")
             conserved_regions = []
-                    
+        
         print(f"✅ Found {len(conserved_regions)} conserved regions")
-
-        # Visualization with directory check
+        
+        # Enhanced visualization with debug features
         Path("results").mkdir(parents=True, exist_ok=True)
-        conservator.plot_conservation(jsd_scores, Path("results/conservation.html"))
-        print("📊 Conservation plot generated")
+        try:
+            conservator.plot_conservation(
+                jsd_scores, 
+                Path("results/conservation.html"),
+                debug=debug_mode  # Pass debug flag to visualization
+            )
+            print("📊 Conservation plot generated")
+        except Exception as e:
+            logger.error(f"Visualization failed: {str(e)}")
+            if debug_mode:
+                logger.error(f"Plot error details:\n{traceback.format_exc()}")
+        
+        # New debug output files
+        if debug_mode:
+            # Save numerical data for inspection
+            np.save("results/js_scores.npy", jsd_scores)
+            pd.DataFrame({
+                'position': range(len(jsd_scores)),
+                'jsd': jsd_scores
+            }).to_csv("results/js_scores.csv", index=False)
+            
+            # Save threshold information
+            with open("results/thresholds.json", 'w') as f:
+                json.dump({
+                    'calculated': thresholds,
+                    'final': conserved_regions[0][1] if conserved_regions else None
+                }, f)
+            
+            logger.debug("Debug data saved to results/ directory")
 
         if conserved_regions:
             print("\n🔬 Designing Cas13 gRNAs...")
