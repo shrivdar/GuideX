@@ -1,3 +1,4 @@
+
 from Bio.SeqRecord import SeqRecord
 from Bio.Seq import Seq
 from Bio import BiopythonDeprecationWarning
@@ -22,6 +23,8 @@ import logging
 import json
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)  # Add this line
+
+# ... (keep existing imports and LOCAL_GENOMES) ...
 
 def main():
     try:
@@ -143,11 +146,20 @@ def main():
         
             if debug_mode and not conserved_regions:
                 logger.debug("No conserved regions found across all thresholds")
-        
+
         except Exception as e:
             logger.error(f"Conservation analysis failed: {str(e)}")
             if debug_mode:
-                logger.error(f"Error details:\n{traceback.format_exc()}")
+                # Add alignment file inspection
+                from Bio import AlignIO
+                logger.debug("Alignment file contents:")
+                try:
+                    alignment = AlignIO.read(aligned_file, "fasta")
+                    logger.debug(f"Sequences: {len(alignment)}, Length: {alignment.get_alignment_length()}")
+                    logger.debug(f"First sequence: {str(alignment[0].seq)[:50]}...")
+                except Exception as parse_error:
+                    logger.debug(f"Failed to read alignment: {str(parse_error)}")
+            
             conserved_regions = []
         
         print(f"✅ Found {len(conserved_regions)} conserved regions")
@@ -158,7 +170,6 @@ def main():
             conservator.plot_conservation(
                 jsd_scores, 
                 Path("results/conservation.html"),
-                debug=debug_mode  # Pass debug flag to visualization
             )
             print("📊 Conservation plot generated")
         except Exception as e:
