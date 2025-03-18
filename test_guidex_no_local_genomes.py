@@ -1,4 +1,3 @@
-
 from Bio.SeqRecord import SeqRecord
 from Bio.Seq import Seq
 from Bio import BiopythonDeprecationWarning
@@ -23,8 +22,6 @@ import logging
 import json
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)  # Add this line
-
-# ... (keep existing imports and LOCAL_GENOMES) ...
 
 def main():
     try:
@@ -164,6 +161,12 @@ def main():
         
         print(f"✅ Found {len(conserved_regions)} conserved regions")
         
+        if not isinstance(jsd_scores, list) or not isinstance(valid_regions, int):
+            logger.error("🆘 Critical: Invalid return types from conservation analyzer!")
+            logger.error(f"Got types: {type(jsd_scores)}, {type(valid_regions)}")
+            jsd_scores = []
+            valid_regions = 0
+            
         # Enhanced visualization with debug features
         Path("results").mkdir(parents=True, exist_ok=True)
         try:
