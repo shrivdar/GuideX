@@ -243,11 +243,13 @@ def main():
                 logger.debug("Saved raw conservation plot")
 
             # Threshold adaptation debugging
-            clean_scores = [s for s in jsd_scores if not np.isnan(s)]
             thresholds = [
                 (max(clean_scores) * 0.9 if clean_scores else 0,
                 (max(clean_scores) * 0.8 if clean_scores else 0,
-                max((min(clean_scores) + 0.2 if clean_scores else 0), 0.6),
+                max(  # Properly structured max call
+                    (min(clean_scores) + 0.2 if clean_scores else 0, 
+                    0.6
+                ),
                 0.5
             ]
 
