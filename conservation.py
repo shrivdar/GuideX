@@ -184,15 +184,15 @@ class ConservationAnalyzer:
         return scores, valid_windows
 
     def _safe_frequencies(self, nucleotide: str) -> np.ndarray:
-        """Bulletproof frequency calculation"""
-        counts = np.array([5.0, 5.0, 5.0, 5.0])  # Strong pseudocounts
+        """Robust frequency calculation with enhanced pseudocounts"""
+        counts = np.array([5.0, 5.0, 5.0, 5.0])  # A, C, G, T
         nt_map = {'A':0, 'C':1, 'G':2, 'T':3}
         
         if nucleotide.upper() in nt_map:
             counts[nt_map[nucleotide.upper()]] += 3.0
             
-        total = np.sum(counts) + 1e-12  # Prevent zero division
-        return np.clip(counts/total, 1e-12, 1.0)
+        total = np.sum(counts) + 1e-12  # Prevent division by zero
+        return np.clip(counts/total, 1e-12, 1.0)  # Numerical stability
 
     def _safe_jsd(self, p: np.ndarray, q: np.ndarray) -> float:
         """Numerically stable JSD calculation"""
