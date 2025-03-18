@@ -19,6 +19,16 @@ class ConservationAnalyzer:
 
     def calculate_jsd(self, aligned_file: Path) -> Tuple[List[float], int]:
         """Calculate Jensen-Shannon Divergence with validation"""
+        # Add numerical stability
+        EPSILON = 1e-10
+        profiles = calculate_position_profiles(alignment)
+        
+        for position in profiles:
+            profile = profiles[position]
+            profile = np.array(profile) + EPSILON  # Prevent zero divisions
+            profile /= profile.sum()  # Now safe
+            profiles[position] = profile
+            
         alignment = AlignIO.read(aligned_file, "fasta")
         jsd_scores = []
         valid_regions = 0
