@@ -5,6 +5,8 @@ from skbio import DNA, TabularMSA
 from scipy.spatial.distance import jensenshannon
 import plotly.express as px
 from guidex.utils.logger import setup_logger
+from Bio import AlignIO
+from collections import Counter
 
 logger = setup_logger(__name__)
 
@@ -18,49 +20,63 @@ class ConservationAnalyzer:
         self.max_gap = 0.9    # Maximum allowed gap proportion per column
 
     def calculate_jsd(self, aligned_file: Path) -> Tuple[List[float], int]:
-        """Calculate Jensen-Shannon Divergence with validation"""
-        # Add numerical stability
-        EPSILON = 1e-10
-        profiles = calculate_position_profiles(alignment)
-        
-        for position in profiles:
-            profile = profiles[position]
-            profile = np.array(profile) + EPSILON  # Prevent zero divisions
-            profile /= profile.sum()  # Now safe
-            profiles[position] = profile
-            
-        alignment = AlignIO.read(aligned_file, "fasta")
+        """Calculate Jensen-Shannon Divergence for alignment windows"""
         jsd_scores = []
-        valid_regions = 0
+        valid_windows = 0
         
-        # Add epsilon to avoid division by zero
-        epsilon = 1e-10
-        
-        for i in range(0, len(alignment[0]), self.window_size):
-            window = alignment[:, i:i+self.window_size]
-            if len(window) < 2:  # Skip single-sequence windows
-                continue
+        try:
+            alignment = AlignIO.read(aligned_file, "fasta")
+            seq_count = len(alignment)
+            if seq_count < 2:
+                return [], 0
                 
-            freqs = []
-            valid_window = True
+            aln_length = alignment.get_alignment_length()
             
-            for seq in window:
-                count = Counter(seq)
-                total = sum(count.values()) + epsilon
-                freq = np.array([(count.get(b, 0)+epsilon)/total for b in 'ACGT-'])
-                if np.any(np.isnan(freq)):
-                    valid_window = False
-                    break
-                freqs.append(freq)
+            for i in range(0, aln_length, self.window_size):
+                window_end = min(i + self.window_size, aln_length)
+                window_jsd = []
                 
-            if valid_window and len(freqs) > 1:
-                jsd = 0
-                for j in range(1, len(freqs)):
-                    jsd += distance.jensenshannon(freqs[0], freqs[j], 2.0)
-                jsd_scores.append(jsd/len(freqs))
-                valid_regions += 1
-    
-        return jsd_scores, valid_regions
+                # Column-wise analysis
+                for col_idx in range(i, window_end):
+                    column = [str(rec.seq[col_idx]).upper() for rec in alignment]
+                    
+                    # Skip gap-heavy columns
+                    if (column.count('-') / len(column)) > self.max_gap:
+                        continue
+                    
+                    # Calculate position frequencies
+                    freqs = []
+                    for nt in column:
+                        counts = Counter(nt)
+                        total = sum(counts.values()) + 4 * self.epsilon  # Add pseudocounts
+                        freq = [
+                            (counts.get('A', 0) + self.epsilon) / total,
+                            (counts.get('C', 0) + self.epsilon) / total,
+                            (counts.get('G', 0) + self.epsilon) / total,
+                            (counts.get('T', 0) + self.epsilon) / total
+                        ]
+                        freqs.append(freq)
+                    
+                    # Calculate pairwise JSD
+                    pairwise_jsd = []
+                    for j in range(len(freqs)):
+                        for k in range(j+1, len(freqs)):
+                            jsd = jensenshannon(freqs[j], freqs[k]) ** 2
+                            if not np.isnan(jsd):
+                                pairwise_jsd.append(jsd)
+                    
+                    if pairwise_jsd:
+                        window_jsd.append(np.mean(pairwise_jsd))
+                
+                if window_jsd:
+                    jsd_scores.append(np.mean(window_jsd))
+                    valid_windows += 1
+                    
+        except Exception as e:
+            logger.error(f"JSD calculation failed: {str(e)}")
+            raise
+        
+        return jsd_scores, valid_windows
 
     def _load_and_filter_alignment(self, path: Path) -> TabularMSA:
         """Load MSA and filter gap-heavy columns"""
@@ -112,12 +128,12 @@ class ConservationAnalyzer:
         return scores, valid_windows
 
     def _safe_frequencies(self, nucleotide: str) -> np.ndarray:
-        """Frequency calculation with pseudocounts and smoothing"""
-        counts = np.ones(4) * 0.25  # Stronger pseudocounts
+        """Frequency calculation with enhanced pseudocounts"""
+        counts = np.full(4, 1.0)  # Strong pseudocounts (1.0 per base)
         nt_map = {'A':0, 'C':1, 'G':2, 'T':3}
         
         if nucleotide.upper() in nt_map:
-            counts[nt_map[nucleotide.upper()]] += 1.0
+            counts[nt_map[nucleotide.upper()]] += 2.0  # Additional weight for observed base
             
         return counts / (np.sum(counts) + self.epsilon)
 
@@ -139,20 +155,38 @@ class ConservationAnalyzer:
         return (unique < 2) or (np.mean(col == '-') > self.max_gap)
 
     def plot_conservation(self, scores: List[float], output_file: Path) -> None:
-        """Generate interactive conservation plot"""
+        """Generate interactive conservation plot with valid data checks"""
+        if not scores:
+            logger.warning("No conservation scores to visualize")
+            return
+    
         try:
+            df = pd.DataFrame({
+                "Position": np.arange(len(scores)),
+                "Conservation": scores
+            })
+            
             fig = px.line(
-                x=list(range(len(scores))[:len(scores)//self.window_size*self.window_size],
-                y=scores,
-                labels={"x": "Position", "y": "Conservation"},
-                title=f"Conservation Profile (Window={self.window_size})"
+                df,
+                x="Position",
+                y="Conservation",
+                title=f"Conservation Profile (Window={self.window_size})",
+                labels={"Conservation": "JSD Score"}
             )
-            output_file.parent.mkdir(parents=True, exist_ok=True)
+            
+            fig.update_layout(
+                xaxis_rangeslider_visible=True,
+                template="plotly_white"
+            )
+            
+            output_file.parent.mkdir(exist_ok=True)
             fig.write_html(str(output_file))
             logger.info(f"Saved conservation plot to {output_file}")
+            
         except Exception as e:
-            logger.error(f"Failed to generate conservation plot: {str(e)}")
-            raise
+            logger.error(f"Visualization failed: {str(e)}")
+            if 'df' in locals():
+                logger.debug(f"Data summary:\n{df.describe()}")
 
     def _load_alignment(self, path: Path) -> TabularMSA:
         """Load and validate alignment file"""
