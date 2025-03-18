@@ -122,10 +122,10 @@ def main():
         conservator = ConservationAnalyzer(window_size=30)
         designer = Cas13gRNADesigner()
         ot_analyzer = OffTargetAnalyzer(
-            genome_index=Path("genomes/hg38/hg38"),  # Path to Bowtie2 index prefix
-            reference_genome=Path("genomes/hg38.fa"),  # Path to reference FASTA
+            reference_genome=Path("genomes/hg38.fa"),  # Direct genome file
             max_mismatches=3,
-            output_dir=Path("results/off_targets")
+            output_dir=Path("results/off_targets"),
+            window_size=28
         )
         optimizer = Cas13Optimizer(designer)
         
