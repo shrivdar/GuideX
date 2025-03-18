@@ -73,9 +73,9 @@ class ConservationAnalyzer:
 
         return jsd_scores, valid_regions
 
-    
+        
     def calculate_jsd(self, aligned_file: Path) -> Tuple[List[float], int]:
-        """Guaranteed tuple return (scores, valid_window_count)"""
+        """Guaranteed tuple return (scores, valid_window_count) with error handling"""
         try:
             alignment = AlignIO.read(aligned_file, "fasta")
             if len(alignment) < 2:
@@ -87,30 +87,33 @@ class ConservationAnalyzer:
             
             for i in range(0, aln_length, self.window_size):
                 window_scores = []
-                for j in range(i, min(i+self.window_size, aln_length)):
+                window_end = min(i + self.window_size, aln_length)
+                
+                for j in range(i, window_end):
                     col = [str(rec.seq[j]).upper() for rec in alignment]
                     
-                    # Skip gap-heavy columns
-                    if (col.count('-')/len(col)) > 0.8:
+                    # Enhanced gap filtering
+                    gap_ratio = col.count('-') / len(col)
+                    if gap_ratio > self.max_gap:
                         continue
                     
-                    # Enhanced frequency calculation
-                    counts = {'A': 2, 'C': 2, 'G': 2, 'T': 2}  # Stronger pseudocounts
+                    # Robust frequency calculation
+                    counts = {'A': 3, 'C': 3, 'G': 3, 'T': 3}  # Stronger pseudocounts
                     for nt in col:
                         if nt in counts:
-                            counts[nt] += 1
+                            counts[nt] += 2  # Increased observed count
                     
-                    total = sum(counts.values())
+                    total = sum(counts.values()) + 1e-12  # Prevent division by zero
                     freqs = [v/total for v in counts.values()]
                     
-                    # Calculate pairwise JSD
+                    # JSD calculation with numerical safety
                     jsd_sum = 0.0
                     pairs = 0
                     for k in range(len(freqs)):
                         for l in range(k+1, len(freqs)):
                             with np.errstate(divide='ignore', invalid='ignore'):
                                 jsd = jensenshannon(freqs[k], freqs[l]) ** 2
-                                if not np.isnan(jsd):
+                                if not np.isnan(jsd) and jsd != float('inf'):
                                     jsd_sum += jsd
                                     pairs += 1
                     
@@ -118,10 +121,14 @@ class ConservationAnalyzer:
                         window_scores.append(jsd_sum / pairs)
                 
                 if window_scores:
-                    scores.append(np.mean(window_scores))
+                    scores.append(np.nanmean(window_scores))  # Handle potential NaNs
                     valid += 1
                     
-            return scores, valid  # Correct return
+            return scores, valid  # Guaranteed tuple return
+    
+        except Exception as e:
+            self.logger.error(f"JSD calculation failed: {str(e)}")
+            return [], 0  # Maintain tuple structure on error
     
         except Exception as e:
             logger.error(f"Conservation analysis failed: {e}")
@@ -181,26 +188,25 @@ class ConservationAnalyzer:
 
     def _safe_frequencies(self, nucleotide: str) -> np.ndarray:
         """Bulletproof frequency calculation"""
-        counts = np.array([2.0, 2.0, 2.0, 2.0])  # Strong pseudocounts
+        # Enhanced pseudocounts
+        counts = np.array([3.0, 3.0, 3.0, 3.0])  # A, C, G, T
         nt_map = {'A':0, 'C':1, 'G':2, 'T':3}
         
         if nucleotide.upper() in nt_map:
-            counts[nt_map[nucleotide.upper()]] += 3.0
+            counts[nt_map[nucleotide.upper()]] += 5.0  # Strong observed count
             
-        total = np.sum(counts)
-        return np.clip(counts/total, 1e-9, 1.0)  # Prevent division issues
+        total = np.sum(counts) + 1e-12  # Prevent zero division
+        return counts / total
 
     def _safe_jsd(self, p: np.ndarray, q: np.ndarray) -> float:
         """Numerically stable JSD calculation"""
-        with np.errstate(divide='ignore', invalid='ignore'):
-            p_norm = p / (np.sum(p) + self.epsilon)
-            q_norm = q / (np.sum(q) + self.epsilon)
-            
-            if np.any(np.isnan(p_norm)) or np.any(np.isnan(q_norm)):
-                return np.nan
-                
-            jsd = jensenshannon(p_norm, q_norm) ** 2
-            return jsd if not np.isnan(jsd) else 0.0
+        # Add epsilon to prevent division by zero
+        epsilon = 1e-12
+        p = np.clip(p, epsilon, 1.0)
+        q = np.clip(q, epsilon, 1.0)
+        
+        m = 0.5 * (p + q)
+        return 0.5 * (entropy(p, m) + entropy(q, m))
 
     def _is_invalid_column(self, col: np.ndarray) -> bool:
         """Check for uninformative columns"""
