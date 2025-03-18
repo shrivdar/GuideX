@@ -8,6 +8,7 @@ warnings.simplefilter('ignore', BiopythonDeprecationWarning)
 from pathlib import Path
 import sys
 import os
+from scipy.spatial import distance
 import shutil
 import importlib
 sys.path.insert(0, str(Path(__file__).parent))
@@ -23,7 +24,7 @@ import torch
 import logging
 import json
 import traceback
-import datetime
+from datetime import datetime
 import pandas as pd
 import numpy as np
 logging.basicConfig(level=logging.INFO)
