@@ -1,88 +1,34 @@
 import numpy as np
 from pathlib import Path
 from typing import List, Tuple
-from skbio import DNA, TabularMSA
 from scipy.spatial.distance import jensenshannon
+from scipy.stats import entropy
+from Bio import AlignIO
+import pandas as pd
 import plotly.express as px
 from guidex.utils.logger import setup_logger
-from Bio import AlignIO
-from collections import Counter
 
 logger = setup_logger(__name__)
 
 class ConservationAnalyzer:
-    """Enhanced conservation analysis with NaN handling and gap filtering"""
+    """Numerically stable conservation analysis with enhanced error handling"""
     
     def __init__(self, window_size: int = 30):
         self.window_size = window_size
         self.min_conservation = 0.7
-        self.epsilon = 1e-10  # Smoothing factor for zero probabilities
-        self.max_gap = 0.9    # Maximum allowed gap proportion per column
+        self.epsilon = 1e-8  # Reduced smoothing factor
+        self.max_gap = 0.8    # Stricter gap filtering
+        self.pseudocount = 5.0  # Increased pseudocounts
 
     def calculate_jsd(self, aligned_file: Path) -> Tuple[List[float], int]:
         """Guaranteed tuple return (scores, valid_window_count)"""
         try:
             alignment = AlignIO.read(aligned_file, "fasta")
             if len(alignment) < 2:
-                return [], 0  # Must return tuple even when empty
-                
-            # Simplified working implementation
-            scores = []
-            valid = 0
-            aln_length = alignment.get_alignment_length()
-            
-            for i in range(0, aln_length, self.window_size):
-                window_scores = []
-                for j in range(i, min(i+self.window_size, aln_length)):
-                    col = [str(rec.seq[j]).upper() for rec in alignment]
-                    
-                    # Skip bad columns
-                    if col.count('-')/len(col) > 0.8:
-                        continue
-                    
-                    # Stable frequency calculation
-                    counts = {'A':1, 'C':1, 'G':1, 'T':1}
-                    for nt in col:
-                        if nt in counts:
-                            counts[nt] += 1
-                    
-                    total = sum(counts.values())
-                    freqs = [v/total for v in counts.values()]
-                    
-                    # Pairwise JSD calculation
-                    jsd_sum = 0
-                    pairs = 0
-                    for k in range(len(freqs)):
-                        for l in range(k+1, len(freqs)):
-                            jsd = jensenshannon(freqs[k], freqs[l]) ** 2
-                            jsd_sum += jsd
-                            pairs += 1
-                    
-                    if pairs > 0:
-                        window_scores.append(jsd_sum/pairs)
-                
-                if window_scores:
-                    scores.append(np.mean(window_scores))
-                    valid += 1
-                    
-            return scores, valid  # Correct return structure
-            
-        except Exception as e:
-            logger.error(f"Conservation analysis failed: {e}")
-            return [], 0  # Always return tuple
+                return ([], 0)  # Explicit tuple return
 
-        return jsd_scores, valid_regions
-
-        
-    def calculate_jsd(self, aligned_file: Path) -> Tuple[List[float], int]:
-        """Guaranteed tuple return (scores, valid_window_count) with error handling"""
-        try:
-            alignment = AlignIO.read(aligned_file, "fasta")
-            if len(alignment) < 2:
-                return [], 0  # Proper tuple return
-    
             scores = []
-            valid = 0
+            valid_windows = 0
             aln_length = alignment.get_alignment_length()
             
             for i in range(0, aln_length, self.window_size):
@@ -91,49 +37,95 @@ class ConservationAnalyzer:
                 
                 for j in range(i, window_end):
                     col = [str(rec.seq[j]).upper() for rec in alignment]
-                    
-                    # Enhanced gap filtering
                     gap_ratio = col.count('-') / len(col)
+                    
                     if gap_ratio > self.max_gap:
                         continue
-                    
-                    # Robust frequency calculation
-                    counts = {'A': 3, 'C': 3, 'G': 3, 'T': 3}  # Stronger pseudocounts
+
+                    # Enhanced frequency calculation with increased pseudocounts
+                    counts = {
+                        'A': self.pseudocount, 
+                        'C': self.pseudocount,
+                        'G': self.pseudocount,
+                        'T': self.pseudocount
+                    }
                     for nt in col:
                         if nt in counts:
-                            counts[nt] += 2  # Increased observed count
-                    
-                    total = sum(counts.values()) + 1e-12  # Prevent division by zero
+                            counts[nt] += 2.0  # Higher observed count
+
+                    total = sum(counts.values()) + 1e-12
                     freqs = [v/total for v in counts.values()]
                     
-                    # JSD calculation with numerical safety
+                    # Numerically stable JSD calculation
                     jsd_sum = 0.0
                     pairs = 0
                     for k in range(len(freqs)):
                         for l in range(k+1, len(freqs)):
-                            with np.errstate(divide='ignore', invalid='ignore'):
-                                jsd = jensenshannon(freqs[k], freqs[l]) ** 2
-                                if not np.isnan(jsd) and jsd != float('inf'):
-                                    jsd_sum += jsd
-                                    pairs += 1
-                    
+                            p = np.clip(freqs[k], 1e-12, 1.0)
+                            q = np.clip(freqs[l], 1e-12, 1.0)
+                            jsd = self._safe_jsd(p, q)
+                            if not np.isnan(jsd):
+                                jsd_sum += jsd
+                                pairs += 1
+
                     if pairs > 0:
                         window_scores.append(jsd_sum / pairs)
-                
-                if window_scores:
-                    scores.append(np.nanmean(window_scores))  # Handle potential NaNs
-                    valid += 1
-                    
-            return scores, valid  # Guaranteed tuple return
-    
-        except Exception as e:
-            self.logger.error(f"JSD calculation failed: {str(e)}")
-            return [], 0  # Maintain tuple structure on error
-    
-        except Exception as e:
-            logger.error(f"Conservation analysis failed: {e}")
-            return [], 0  # Proper error return
 
+                if window_scores:
+                    window_avg = np.nanmean(window_scores)
+                    if not np.isnan(window_avg):
+                        scores.append(float(window_avg))
+                        valid_windows += 1
+
+            return (scores, valid_windows)  # Explicit tuple
+
+        except Exception as e:
+            logger.error(f"Conservation analysis failed: {str(e)}")
+            return ([], 0)  # Maintain tuple structure
+
+    def _safe_jsd(self, p: List[float], q: List[float]) -> float:
+        """Numerically stable JSD implementation"""
+        p = np.asarray(p)
+        q = np.asarray(q)
+        
+        # Add epsilon to prevent division by zero
+        p = np.clip(p, 1e-12, 1.0)
+        q = np.clip(q, 1e-12, 1.0)
+        
+        m = 0.5 * (p + q)
+        return 0.5 * (entropy(p, m) + entropy(q, m))
+
+    def plot_conservation(self, scores: List[float], output_file: Path) -> None:
+        """Robust plotting with NaN handling"""
+        try:
+            if not scores:
+                logger.warning("No scores to plot")
+                return
+
+            # Create clean dataframe with position index
+            df = pd.DataFrame({
+                'Position': np.arange(len(scores)),
+                'Conservation': np.nan_to_num(scores, nan=0.0)
+            })
+            
+            # Generate interactive plot
+            fig = px.line(
+                df,
+                x='Position',
+                y='Conservation',
+                title=f'Conservation Profile (Window Size: {self.window_size}bp)',
+                labels={'Conservation': 'Jensen-Shannon Distance'},
+                template='plotly_white'
+            )
+            
+            fig.write_html(str(output_file))
+            logger.info(f"Saved conservation plot to {output_file}")
+
+        except Exception as e:
+            logger.error(f"Visualization error: {str(e)}")
+            if hasattr(e, 'message'):
+                logger.debug(f"Error details: {e.message}")
+    
     def _load_and_filter_alignment(self, path: Path) -> TabularMSA:
         """Load MSA and filter gap-heavy columns"""
         msa = TabularMSA.read(str(path), constructor=DNA)
@@ -194,47 +186,11 @@ class ConservationAnalyzer:
         total = np.sum(counts) + 1e-12  # Prevent division by zero
         return np.clip(counts/total, 1e-12, 1.0)  # Numerical stability
 
-    def _safe_jsd(self, p: np.ndarray, q: np.ndarray) -> float:
-        """Numerically stable JSD calculation"""
-        # Add epsilon to prevent division by zero
-        epsilon = 1e-12
-        p = np.clip(p, epsilon, 1.0)
-        q = np.clip(q, epsilon, 1.0)
-        
-        m = 0.5 * (p + q)
-        return 0.5 * (entropy(p, m) + entropy(q, m))
 
     def _is_invalid_column(self, col: np.ndarray) -> bool:
         """Check for uninformative columns"""
         unique = len(set(col))
         return (unique < 2) or (np.mean(col == '-') > self.max_gap)
-
-    def plot_conservation(self, scores: List[float], output_file: Path) -> None:
-        """Simplified working plot"""
-        if not scores:
-            return  # Skip empty plots
-        
-        try:
-            # Create clean dataframe
-            df = pd.DataFrame({
-                'Position': range(len(scores)),
-                'Conservation': scores
-            })
-            
-            # Filter NaN/Inf values
-            df = df.replace([np.inf, -np.inf], np.nan).dropna()
-            
-            fig = px.line(
-                df,
-                x='Position',
-                y='Conservation',
-                title='Conservation Profile',
-                labels={'Conservation': 'Score'}
-            )
-            fig.write_html(str(output_file))
-            
-        except Exception as e:
-            logger.error(f"Plot failed: {e}")
 
     def _load_alignment(self, path: Path) -> TabularMSA:
         """Load and validate alignment file"""
