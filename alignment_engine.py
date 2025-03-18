@@ -7,7 +7,6 @@ from pathlib import Path
 from typing import List
 from Bio import SeqIO
 from Bio.Align.Applications import MuscleCommandline
-from Bio.SeqRecord import SeqRecord
 from guidex.utils.logger import setup_logger
 
 logger = setup_logger(__name__)
@@ -22,17 +21,15 @@ class AlignmentEngine:
         self._setup_parameters()
 
     def _setup_parameters(self):
-        """Configure MUSCLE parameters for cassava genomes"""
+        """Updated parameters for MUSCLE v5+"""
         self.muscle_params = [
-            "-maxiters", "1",       # Reduced iterations for speed
-            "-diags",               # Faster for similar sequences
-            "-sv",                  # Use sparse vertical optimization
-            "-quiet",
-            "-threads", str(self.max_threads)
+            "-super5",          # Use ultra-fast alignment algorithm
+            "-threads", str(self.max_threads),
+            "-quiet"
         ]
 
     def _verify_aligner(self) -> str:
-        """Verify MUSCLE v5+ installation with large sequence support"""
+        """Verify MUSCLE v5+ installation"""
         try:
             result = subprocess.run(
                 ["muscle", "-version"],
@@ -40,8 +37,8 @@ class AlignmentEngine:
                 text=True,
                 check=True
             )
-            if "muscle 5" not in result.stdout:
-                raise RuntimeError("MUSCLE v5+ required for plant genome alignment")
+            if "muscle 5" not in result.stdout.lower():
+                raise RuntimeError("MUSCLE v5+ required")
             return "muscle"
         except Exception as e:
             logger.error(f"Aligner verification failed: {str(e)}")
@@ -66,12 +63,14 @@ class AlignmentEngine:
         return self._run_alignment(input_path, output_dir)
 
     def _run_alignment(self, input_file: Path, output_dir: Path) -> Path:
-        """Core alignment logic with optimized parameters"""
+        """Updated alignment logic for MUSCLE v5"""
         output_file = output_dir / "ALIGNMENT_OUT.fasta"
         
         try:
-            command = ["muscle", "-align", str(input_file), 
-                      "-output", str(output_file)] + self.muscle_params
+            command = ["muscle"] + self.muscle_params + [
+                str(input_file),
+                "-output", str(output_file)
+            ]
             logger.info(f"Executing: {' '.join(command)}")
             
             subprocess.run(
@@ -83,8 +82,9 @@ class AlignmentEngine:
             return output_file
             
         except subprocess.CalledProcessError as e:
-            logger.error(f"Alignment failed: {e.stderr.decode()}")
-            raise RuntimeError("MUSCLE alignment crashed") from e
+            error_msg = e.stderr.decode().strip()
+            logger.error(f"Alignment failed: {error_msg}")
+            raise RuntimeError(f"MUSCLE v5 error: {error_msg}") from e
 
     def _validate_input(self, genomes: List[SeqRecord]):
         """Enhanced validation for plant genome characteristics"""
