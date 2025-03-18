@@ -133,9 +133,6 @@ class ConservationAnalyzer:
         except Exception as e:
             logger.error(f"Conservation analysis failed: {e}")
             return [], 0  # Proper error return
-    
-        # REMOVE THIS LINE - CAUSES UNDEFINED VARIABLE ERRORS
-        # return jsd_scores, valid_regions  
 
     def _load_and_filter_alignment(self, path: Path) -> TabularMSA:
         """Load MSA and filter gap-heavy columns"""
@@ -188,15 +185,14 @@ class ConservationAnalyzer:
 
     def _safe_frequencies(self, nucleotide: str) -> np.ndarray:
         """Bulletproof frequency calculation"""
-        # Enhanced pseudocounts
-        counts = np.array([3.0, 3.0, 3.0, 3.0])  # A, C, G, T
+        counts = np.array([5.0, 5.0, 5.0, 5.0])  # Strong pseudocounts
         nt_map = {'A':0, 'C':1, 'G':2, 'T':3}
         
         if nucleotide.upper() in nt_map:
-            counts[nt_map[nucleotide.upper()]] += 5.0  # Strong observed count
+            counts[nt_map[nucleotide.upper()]] += 3.0
             
         total = np.sum(counts) + 1e-12  # Prevent zero division
-        return counts / total
+        return np.clip(counts/total, 1e-12, 1.0)
 
     def _safe_jsd(self, p: np.ndarray, q: np.ndarray) -> float:
         """Numerically stable JSD calculation"""
