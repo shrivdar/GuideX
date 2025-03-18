@@ -1,3 +1,5 @@
+from Bio import AlignIO
+import traceback
 from Bio.SeqRecord import SeqRecord
 from Bio.Seq import Seq
 from Bio import BiopythonDeprecationWarning
@@ -184,141 +186,190 @@ def main():
         if len(valid_genomes) < 2:
             raise ValueError(f"Only {len(valid_genomes)} valid genomes (need ≥2)")
 
-        # Alignment process with file verification
+        # Alignment process with enhanced verification
         logger.info("\n🧬 Starting alignment...")
-        aligned_file = aligner.align(valid_genomes, Path("alignments"))
-        logger.info(f"🔍 Alignment saved to: {aligned_file}")
-
-        if debug_mode:
-            logger.debug("Alignment file inspection:")
-            try:
-                with open(aligned_file) as f:
-                    lines = f.readlines()
-                    logger.debug(f"File length: {len(lines)} lines")
-                    logger.debug("First 3 sequences:")
-                    for line in lines[:6]:
-                        if line.startswith(">"):
-                            logger.debug(f"Header: {line.strip()}")
-            except Exception as e:
-                logger.error(f"Alignment file read error: {e}")
-
-            # Conservation analysis with comprehensive debugging
-            logger.info("\n🔎 Identifying conserved regions...")
-            jsd_scores = []
-            valid_regions = 0
-            conserved_regions = []
-            thresholds = [0.6, 0.5, 0.6, 0.5]  # Safe defaults
-    
-            try:
-                # Validate and unpack conservation results
-                conservation_result = conservator.calculate_jsd(aligned_file)
-                if not isinstance(conservation_result, tuple) or len(conservation_result) != 2:
-                    raise ValueError(f"Invalid conservation result format: {type(conservation_result)}")
-                
-                jsd_scores, valid_regions = conservation_result
-                
-                if debug_mode:
-                    logger.debug(f"Initial JSD scores: {len(jsd_scores)} values")
-                    logger.debug(f"Valid regions reported: {valid_regions}")
-    
-                # Data quality checks
-                if not jsd_scores or all(np.isnan(s) for s in jsd_scores):
-                    raise ValueError("No valid conservation scores generated")
-    
-                # Threshold calculation with fallbacks
-                clean_scores = [s for s in jsd_scores if not np.isnan(s)]
-                try:
-                    if clean_scores:
-                        threshold1 = np.nanpercentile(jsd_scores, 90)
-                        threshold2 = np.nanpercentile(jsd_scores, 80)
-                        threshold3 = max(np.nanpercentile(jsd_scores, 10) + 0.2, 0.6)
-                    else:
-                        threshold1 = threshold2 = threshold3 = 0.6
-                    
-                    thresholds = [threshold1, threshold2, threshold3, 0.5]
-                    
-                    if debug_mode:
-                        logger.debug("Computed Thresholds:")
-                        logger.debug(f"1. {threshold1:.3f} (90th percentile)")
-                        logger.debug(f"2. {threshold2:.3f} (80th percentile)")
-                        logger.debug(f"3. {threshold3:.3f} (10th pct + 0.2)")
-                        logger.debug(f"4. 0.500 (fixed fallback)")
-    
-                except Exception as e:
-                    logger.error(f"Threshold calculation error: {str(e)}")
-                    thresholds = [0.6, 0.5, 0.6, 0.5]
-    
-                # Region detection with bounds checking
-                conserved_regions = []
-                for i, threshold in enumerate(thresholds):
-                    try:
-                        current_regions = [
-                            (pos, min(pos + 30, len(jsd_scores) - 1))  # Fixed parenthesis
-                            for pos, s in enumerate(jsd_scores)
-                            if not np.isnan(s) and s > threshold
-                        ]
-                        
-                        if current_regions:
-                            conserved_regions = current_regions
-                            if debug_mode:
-                                logger.debug(f"Threshold {i+1} ({threshold:.3f}) regions:")
-                                logger.debug(f" - Count: {len(current_regions)}")
-                                logger.debug(f" - First region: {current_regions[0][0]}-{current_regions[0][1]}")
-                                logger.debug(f" - Scores: {jsd_scores[current_regions[0][0]]:.3f}-{jsd_scores[current_regions[0][1]]:.3f}")
-                            break
-                            
-                    except Exception as e:
-                        logger.warning(f"Region detection failed at threshold {i}: {str(e)}")
-                        if debug_mode:
-                            logger.debug(f"Failed threshold value: {threshold}")
-                            logger.debug(f"JSD scores length: {len(jsd_scores)}")
-    
-                logger.info(f"✅ Found {len(conserved_regions)} conserved regions")
-    
-            except Exception as e:
-                logger.error(f"Conservation analysis failed: {str(e)}")
-                if debug_mode:
-                    logger.error(f"Error traceback:\n{traceback.format_exc()}")
-                    logger.debug(f"Alignment file status: {'valid' if aligned_file.exists() else 'missing'}")
-                    if aligned_file.exists():
-                        logger.debug(f"File size: {aligned_file.stat().st_size} bytes")
-                        logger.debug(f"Sequence count: {len(AlignIO.read(aligned_file, 'fasta'))}")
-    
-            # Visualization with enhanced safeguards
-            try:
-                if jsd_scores and len(jsd_scores) > 10:
-                    conservator.plot_conservation(
-                        jsd_scores, 
-                        Path("results/conservation.html")
-                    )
-                    logger.info("📊 Conservation plot generated")
-                else:
-                    logger.warning("Skipping visualization - insufficient data")
-            except Exception as e:
-                logger.error(f"Visualization failed: {str(e)}")
-                if debug_mode:
-                    logger.error(f"Failed JSD scores: {jsd_scores[:10]}...")
-    
-            # Debug data exports
+        aligned_file = None
+        try:
+            aligned_file = aligner.align(valid_genomes, Path("alignments"))
+            logger.info(f"🔍 Alignment saved to: {aligned_file}")
+            
             if debug_mode:
+                logger.debug("Alignment file structure verification:")
                 try:
-                    debug_df = pd.DataFrame({
-                        'position': range(len(jsd_scores)),
-                        'jsd_score': jsd_scores,
-                        'is_nan': [np.isnan(s) for s in jsd_scores]
-                    })
-                    debug_df.to_csv("results/debug_conservation.csv", index=False)
+                    # Validate alignment using BioPython
+                    alignment = AlignIO.read(aligned_file, "fasta")
+                    logger.debug(f"Alignment contains {len(alignment)} sequences")
+                    logger.debug(f"Alignment length: {alignment.get_alignment_length()} bp")
                     
-                    with open("results/thresholds.json", 'w') as f:
-                        json.dump({
-                            'thresholds': thresholds,
-                            'final_threshold': thresholds[0] if conserved_regions else None,
-                            'conserved_regions': conserved_regions
-                        }, f, indent=2)
+                    # Show sequence sample
+                    logger.debug("First 3 sequences:")
+                    for i, rec in enumerate(alignment[:3]):
+                        logger.debug(f"{rec.id}: {str(rec.seq[:50])}...")
                         
-                    logger.debug("Debug data saved successfully")
                 except Exception as e:
-                    logger.error(f"Debug data export failed: {str(e)}")
+                    logger.error(f"Alignment validation failed: {str(e)}")
+
+        except Exception as e:
+            logger.error(f"Alignment failed: {str(e)}")
+            raise RuntimeError("Critical alignment failure") from e
+
+        # Conservation analysis with robust error handling
+        logger.info("\n🔎 Identifying conserved regions...")
+        jsd_scores = []
+        valid_regions = 0
+        conserved_regions = []
+        thresholds = [0.6, 0.5, 0.6, 0.5]  # Safe defaults
+
+        try:
+            # Validate and unpack conservation results
+            conservation_result = conservator.calculate_jsd(aligned_file)
+            
+            if not isinstance(conservation_result, tuple) or len(conservation_result) != 2:
+                raise ValueError(
+                    f"Invalid conservation result format: {type(conservation_result)}. "
+                    f"Expected (scores, valid_regions) tuple"
+                )
+            
+            jsd_scores, valid_regions = conservation_result
+            
+            if debug_mode:
+                logger.debug("Conservation analysis raw results:")
+                logger.debug(f"- JSD scores count: {len(jsd_scores)}")
+                logger.debug(f"- Valid regions reported: {valid_regions}")
+                if jsd_scores:
+                    logger.debug(f"- First 5 scores: {jsd_scores[:5]}")
+
+            # Data quality checks
+            if not jsd_scores:
+                raise ValueError("Empty conservation scores array")
+                
+            nan_count = np.isnan(jsd_scores).sum()
+            if nan_count == len(jsd_scores):
+                raise ValueError("All conservation scores are NaN")
+
+            # Threshold calculation with fallbacks
+            clean_scores = [s for s in jsd_scores if not np.isnan(s)]
+            try:
+                if clean_scores:
+                    threshold1 = np.nanpercentile(jsd_scores, 90)
+                    threshold2 = np.nanpercentile(jsd_scores, 80)
+                    threshold3 = max(np.nanpercentile(jsd_scores, 10) + 0.2, 0.6)
+                else:
+                    threshold1 = threshold2 = threshold3 = 0.6
+                
+                thresholds = [threshold1, threshold2, threshold3, 0.5]
+                
+                if debug_mode:
+                    logger.debug("Computed Thresholds:")
+                    logger.debug(f"1. {threshold1:.3f} (90th percentile)")
+                    logger.debug(f"2. {threshold2:.3f} (80th percentile)")
+                    logger.debug(f"3. {threshold3:.3f} (10th pct + 0.2)")
+                    logger.debug(f"4. 0.500 (fixed fallback)")
+
+            except Exception as e:
+                logger.error(f"Threshold calculation error: {str(e)}")
+                thresholds = [0.6, 0.5, 0.6, 0.5]  # Fallback values
+                if debug_mode:
+                    logger.debug("Using safe default thresholds")
+
+            # Region detection with enhanced validation
+            conserved_regions = []
+            for i, threshold in enumerate(thresholds):
+                try:
+                    current_regions = [
+                        (pos, min(pos + 30, len(jsd_scores) - 1))  # Fixed bounds check
+                        for pos, s in enumerate(jsd_scores)
+                        if not np.isnan(s) and s > threshold
+                    ]
+                    
+                    if current_regions:
+                        conserved_regions = current_regions
+                        if debug_mode:
+                            logger.debug(f"Threshold {i+1} ({threshold:.3f}) success:")
+                            logger.debug(f"- Regions found: {len(current_regions)}")
+                            logger.debug(f"- First region span: {current_regions[0][0]}-{current_regions[0][1]}")
+                            logger.debug(f"- Region scores: "
+                                       f"{jsd_scores[current_regions[0][0]]:.3f}-"
+                                       f"{jsd_scores[current_regions[0][1]]:.3f}")
+                        break
+                        
+                except Exception as e:
+                    logger.warning(f"Region detection failed at threshold {i}: {str(e)}")
+                    if debug_mode:
+                        logger.debug(f"Failed threshold details:")
+                        logger.debug(f"- Threshold value: {threshold}")
+                        logger.debug(f"- JSD scores length: {len(jsd_scores)}")
+                        logger.debug(f"- NaN count: {np.isnan(jsd_scores).sum()}")
+
+            logger.info(f"✅ Found {len(conserved_regions)} conserved regions")
+
+        except Exception as e:
+            logger.error(f"Conservation analysis failed: {str(e)}")
+            if debug_mode:
+                logger.error(f"Error traceback:\n{traceback.format_exc()}")
+                logger.debug("Alignment file diagnostics:")
+                logger.debug(f"- Exists: {aligned_file.exists()}")
+                logger.debug(f"- Size: {aligned_file.stat().st_size} bytes")
+                try:
+                    with open(aligned_file, 'r') as f:
+                        logger.debug(f"- First line: {f.readline().strip()}")
+                except Exception as read_error:
+                    logger.debug(f"- File read failed: {str(read_error)}")
+            conserved_regions = []
+
+        # Visualization with comprehensive safeguards
+        try:
+            if jsd_scores and len(jsd_scores) > 10 and not np.all(np.isnan(jsd_scores)):
+                conservator.plot_conservation(
+                    jsd_scores, 
+                    Path("results/conservation.html")
+                )
+                logger.info("📊 Conservation plot generated")
+            else:
+                logger.warning("Skipping visualization - insufficient valid data")
+                if debug_mode:
+                    logger.debug(f"Visualization skip reason:")
+                    logger.debug(f"- JSD scores length: {len(jsd_scores)}")
+                    logger.debug(f"- NaN ratio: {np.isnan(jsd_scores).mean():.2%}")
+        except Exception as e:
+            logger.error(f"Visualization failed: {str(e)}")
+            if debug_mode:
+                logger.error(f"Failed JSD scores sample:\n{jsd_scores[:10]}")
+
+        # Debug data persistence with validation
+        if debug_mode:
+            try:
+                logger.debug("Persisting debug datasets...")
+                debug_data = {
+                    'jsd_scores': jsd_scores,
+                    'thresholds': thresholds,
+                    'conserved_regions': conserved_regions
+                }
+                
+                # Save numerical data
+                np.save("results/debug_data.npy", debug_data)
+                
+                # Save CSV for manual inspection
+                pd.DataFrame({
+                    'position': range(len(jsd_scores)),
+                    'jsd_score': jsd_scores,
+                    'is_nan': np.isnan(jsd_scores)
+                }).to_csv("results/conservation_debug.csv", index=False)
+                
+                # Save thresholds metadata
+                with open("results/threshold_metadata.json", 'w') as f:
+                    json.dump({
+                        'calculated_thresholds': [float(t) for t in thresholds],
+                        'final_threshold_used': float(thresholds[0]) if conserved_regions else None,
+                        'conserved_region_count': len(conserved_regions)
+                    }, f, indent=2)
+                
+                logger.debug("Debug data persisted successfully")
+                
+            except Exception as e:
+                logger.error(f"Debug data persistence failed: {str(e)}")
+                if debug_mode:
+                    logger.error(f"Data dump error details:\n{traceback.format_exc()}")
 
         # gRNA Design with enhanced feedback
         grnas = []
