@@ -1,11 +1,8 @@
-import os
-import subprocess
+
 import numpy as np
 from pathlib import Path
 from typing import List
-from Bio import SeqIO
-from Bio.Seq import Seq
-from scikit-bio import DNA, TabularMSA
+from skbio import DNA, TabularMSA
 from scipy.spatial.distance import jensenshannon
 import plotly.express as px
 from guidex.utils.logger import setup_logger
@@ -13,161 +10,93 @@ from guidex.utils.logger import setup_logger
 logger = setup_logger(__name__)
 
 class ConservationAnalyzer:
-    """Modern conservation analysis pipeline"""
+    """Conservation analysis pipeline for aligned genomes"""
     
     def __init__(self, window_size: int = 30):
         self.window_size = window_size
-        self.mafft_path = self._verify_mafft()
-        self.min_conservation = 0.8
-
-    def _verify_mafft(self):
-        """Ensure MAFFT v7.5+ is installed"""
-        try:
-            result = subprocess.run(
-                ["mafft", "--version"],
-                capture_output=True,
-                text=True,
-                check=True
-            )
-            if "v7" not in result.stderr:
-                raise RuntimeError("Requires MAFFT v7.5+")
-            return "mafft"
-        except Exception as e:
-            raise RuntimeError(f"MAFFT verification failed: {str(e)}")
-
-    def _run_mafft(self, input_path: Path, output_dir: Path) -> Path:
-        """Final verified MAFFT alignment with complete parameter isolation"""
-        output_path = output_dir / "MAFFT_OUT.fasta"
-    
-        # Clean previous attempts
-        output_path.unlink(missing_ok=True)
-    
-        # Attempt 1: Modern parameter set
-        try:
-            self.logger.debug("MAFFT Attempt 1: Optimized parameters")
-            cmd = [
-                "mafft",
-                "--auto",
-                "--thread", "2",
-                "--quiet",
-                "--inputorder",  # Explicitly keep input order
-                str(input_path.resolve())  # Use absolute path
-            ]
-            
-            with open(output_path, "w") as f:
-                subprocess.run(
-                    cmd,
-                    stdout=f,
-                    stderr=subprocess.PIPE,
-                    check=True,
-                    timeout=300,
-                    env={"PATH": os.getenv("PATH")}  # Clean environment
-                )
-            return output_path
-        
-        except subprocess.CalledProcessError as e:
-            self.logger.warning(f"MAFFT Attempt 1 failed: {e.stderr.decode().strip()}")
-        
-            # Attempt 2: Absolute minimal command
-            try:
-                self.logger.debug("MAFFT Attempt 2: Basic mode")
-                subprocess.run(
-                    f"mafft --auto {input_path} > {output_path}",
-                    shell=True,
-                    check=True,
-                    executable="/bin/bash",
-                    timeout=300,
-                    env={"PATH": os.getenv("PATH")}
-                )
-                return output_path
-            
-            except subprocess.CalledProcessError as final_e:
-                output_path.unlink(missing_ok=True)
-                error_msg = (
-                    "MAFFT failed all methods.\n"
-                    f"Attempt 1 Error: {e.stderr.decode().strip()}\n"
-                    f"Attempt 2 Error: {final_e.stderr.decode().strip()}"
-                )
-                self.logger.error(error_msg)
-                raise RuntimeError(error_msg)
-            
-        except Exception as e:
-            output_path.unlink(missing_ok=True)
-            self.logger.error(f"Catastrophic MAFFT failure: {str(e)}")
-            raise    
-
-    def align_genomes(self, genomes, output_dir: Path) -> Path:
-        """Modern alignment workflow"""
-        output_dir.mkdir(parents=True, exist_ok=True)
-        self._validate_input(genomes)
-
-        input_path = output_dir / "MAFFT_IN.fasta"
-        self._write_combined_fasta(genomes, input_path)
-        
-        return self._run_mafft(input_path, output_dir)
+        self.min_conservation = 0.7
 
     def calculate_jsd(self, aligned_file: Path) -> List[float]:
-        """Modern conservation scoring"""
-        msa = self._load_alignment(aligned_file)
-        return self._windowed_analysis(msa)
+        """Calculate Jensen-Shannon Divergence scores for aligned sequences"""
+        # Validate alignment file
+        if not aligned_file.exists():
+            raise FileNotFoundError(f"Alignment file missing: {aligned_file}")
+        
+        try:
+            # Load and validate alignment
+            msa = self._load_alignment(aligned_file)
+            if len(msa) < 2:
+                raise ValueError("At least 2 sequences required for conservation analysis")
+            
+            # Calculate conservation scores
+            logger.info(f"Analyzing conservation for {len(msa)} sequences")
+            return self._windowed_analysis(msa)
+            
+        except Exception as e:
+            logger.error(f"Conservation analysis failed: {str(e)}")
+            raise
 
     def plot_conservation(self, scores: List[float], output_file: Path) -> None:
-        """Interactive visualization"""
-        fig = px.line(
-            x=list(range(len(scores))),
-            y=scores,
-            labels={"x": "Position", "y": "Conservation"},
-            title=f"Conservation Profile (Window={self.window_size})"
-        )
-        fig.write_html(str(output_file))
-
-    # Implementation Details
-    def _validate_input(self, genomes):
-        """Modern sequence validation"""
-        if len(genomes) < 2:
-            raise ValueError("Need ≥2 genomes for analysis")
-            
-        lengths = [len(g.seq) for g in genomes]
-        if max(lengths) - min(lengths) > 1000:
-            raise ValueError("Sequence length variation >1kb")
-            
-        if any("U" in str(g.seq) for g in genomes):
-            raise ValueError("RNA sequences not supported")
-
-    def _write_combined_fasta(self, genomes, path: Path):
-        """Write input following NCBI v2 standards"""
-        with open(path, "w") as f:
-            for idx, rec in enumerate(genomes):
-                rec.id = f"Genome_{idx+1}"  # Standardize IDs
-                SeqIO.write(rec, f, "fasta-2line")
+        """Generate interactive conservation plot"""
+        try:
+            fig = px.line(
+                x=list(range(len(scores))[:len(scores)//self.window_size*self.window_size],
+                y=scores,
+                labels={"x": "Position", "y": "Conservation"},
+                title=f"Conservation Profile (Window={self.window_size})"
+            )
+            output_file.parent.mkdir(parents=True, exist_ok=True)
+            fig.write_html(str(output_file))
+            logger.info(f"Saved conservation plot to {output_file}")
+        except Exception as e:
+            logger.error(f"Failed to generate conservation plot: {str(e)}")
+            raise
 
     def _load_alignment(self, path: Path) -> TabularMSA:
-        """Load alignment with validation"""
-        if not path.exists():
-            raise FileNotFoundError(f"Alignment file missing: {path}")
+        """Load and validate alignment file"""
+        logger.debug(f"Loading alignment from {path}")
+        msa = TabularMSA.read(str(path), constructor=DNA)
+        
+        # Validate alignment content
+        if len(msa) == 0:
+            raise ValueError("Empty alignment file")
+        if any(len(seq) != len(msa[0]) for seq in msa):
+            raise ValueError("Inconsistent sequence lengths in alignment")
             
-        return TabularMSA.read(path, constructor=DNA)
+        return msa
 
     def _windowed_analysis(self, msa: TabularMSA) -> List[float]:
-        """Sliding window JSD calculation"""
+        """Sliding window conservation scoring"""
         scores = []
-        for i in range(0, len(msa[0]), self.window_size):
-            window = msa[:, i:i+self.window_size]
-            window_score = self._calculate_window_jsd(window)
-            scores.extend([window_score] * self.window_size)
+        seq_length = len(msa[0])
+        
+        for i in range(0, seq_length - self.window_size + 1):
+            window_scores = []
+            for j in range(i, min(i+self.window_size, seq_length)):
+                position_scores = []
+                for seq1 in msa:
+                    for seq2 in msa:
+                        if seq1 != seq2:
+                            p = self._position_frequencies(seq1[j])
+                            q = self._position_frequencies(seq2[j])
+                            position_scores.append(jensenshannon(p, q) ** 2)
+                window_scores.append(np.mean(position_scores) if position_scores else 0.0)
+            scores.extend(window_scores)
+            
         return scores
 
-    def _calculate_window_jsd(self, window) -> float:
-        """Modern JSD implementation"""
-        if window.shape[1] < self.window_size:
-            return 0.0  # Handle edge windows
+    def _position_frequencies(self, nucleotide: str) -> List[float]:
+        """Calculate normalized nucleotide frequencies at a position"""
+        valid_nt = {'A', 'C', 'G', 'T'}
+        counts = {
+            'A': 0.25,  # Pseudocounts to avoid zero probabilities
+            'C': 0.25,
+            'G': 0.25,
+            'T': 0.25
+        }
+        
+        if nucleotide.upper() in valid_nt:
+            counts[nucleotide.upper()] += 1.0
             
-        freq_matrix = []
-        for seq in window:
-            counts = {nt: seq.frequencies().get(nt, 0) for nt in 'ACGT'}
-            freq_matrix.append([counts['A'], counts['C'], counts['G'], counts['T']])
-            
-        return np.mean([
-            jensenshannon(freq_matrix[0], freq) ** 2
-            for freq in freq_matrix[1:]
-        ]) if len(freq_matrix) > 1 else 0.0
+        total = sum(counts.values())
+        return [v/total for v in counts.values()]
