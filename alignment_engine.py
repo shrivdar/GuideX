@@ -1,3 +1,5 @@
+from Bio.SeqRecord import SeqRecord
+from Bio.Seq import Seq
 import os
 import subprocess
 import logging
