@@ -270,7 +270,7 @@ def main():
                 for i, threshold in enumerate(thresholds):
                     try:
                         current_regions = [
-                            (pos, min(pos+30, len(jsd_scores)-1)
+                            (pos, min(pos+30, len(jsd_scores)-1))
                             for pos, s in enumerate(jsd_scores)
                             if not np.isnan(s) and s > threshold
                         ]
