@@ -15,10 +15,10 @@ class ConservationAnalyzer:
     
     def __init__(self, window_size: int = 30):
         self.window_size = window_size
-        self.min_conservation = 0.7
-        self.epsilon = 1e-8  # Reduced smoothing factor
-        self.max_gap = 0.8    # Stricter gap filtering
-        self.pseudocount = 5.0  # Increased pseudocounts
+        self.max_gap = max_gap  # Add this line
+        self.pseudocount = pseudocount  # Add this line
+        self.epsilon = 1e-10
+        self.logger = setup_logger(__name__)
 
     def calculate_jsd(self, aligned_file: Path) -> Tuple[List[float], int]:
         """Guaranteed tuple return (scores, valid_window_count)"""
