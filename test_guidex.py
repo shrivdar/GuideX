@@ -25,6 +25,8 @@ import json
 from datetime import datetime
 import pandas as pd
 import numpy as np
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)  # Add this line
 
 # CBSV-optimized parameters
 CBSV_THRESHOLDS = [0.65, 0.55, 0.45, 0.35]
