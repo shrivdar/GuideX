@@ -167,7 +167,8 @@ def main():
             if debug_mode and genomes:
                 logger.debug("NCBI fetch results:")
                 logger.debug(f"First genome ID: {genomes[0].id}")
-                logger.debug(f"First 50 bases: {str(genomes[0].seq[:50]}")
+                logger.debug(f"First 50 bases: {str(genomes[0].seq[:50])}")
+
 
             if not genomes:
                 logger.warning("ℹ️ No genomes found - trying protein database")
