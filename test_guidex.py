@@ -157,8 +157,8 @@ def main():
             gc_range=(0.35, 0.65),
             mfe_threshold=-5.0
         )
-        ot_analyzer = OffTargetAnalyzer()
-        optimizer = Cas13Optimizer()
+        ot_analyzer = OffTargetAnalyzer(reference_genome=Path("genomes/hg38.fa"))
+        optimizer = Cas13Optimizer(designer=designer)
 
         try:
             importlib.reload(conservation)
