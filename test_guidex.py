@@ -14,7 +14,7 @@ import importlib
 sys.path.insert(0, str(Path(__file__).parent))
 importlib.invalidate_caches()
 from guidex.genome_fetcher import GenomeFetcher
-from guidex.conservation import ConservationAnalyzer
+from conservation import ConservationAnalyzer
 from alignment_engine import AlignmentEngine
 from guidex.core import Cas13gRNADesigner
 from guidex.grna.off_target import OffTargetAnalyzer
