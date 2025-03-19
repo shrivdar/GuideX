@@ -1,4 +1,4 @@
-from Bio import AlignIO
+from Bio import AlignIO, SeqIO
 import traceback
 from Bio.SeqRecord import SeqRecord
 from Bio.Seq import Seq
@@ -29,6 +29,7 @@ from guidex.genome_fetcher import GenomeFetcher
 from guidex.core import Cas13gRNADesigner
 from guidex.grna.off_target import OffTargetAnalyzer
 from guidex.grna.optimizer import Cas13Optimizer
+from guidex.core.grna_designer import gRNACandidate
 from typing import List, Tuple
 
 # Configure logging
@@ -91,7 +92,16 @@ def main():
                 
             if not genomes:
                 logger.warning("ℹ️ No NCBI results - loading local genomes")
-                genomes = [SeqIO.read(f, "fasta") for f in LOCAL_GENOME_PATH.glob("*.fna")][:12]
+                genomes = []
+                try:
+                    genome_files = list(LOCAL_GENOME_PATH.glob("*.fna"))
+                    if not genome_files:
+                        raise FileNotFoundError("No local genome files found")
+                        
+                    genomes = [SeqIO.read(f, "fasta") for f in genome_files[:12]]
+                except Exception as e:
+                    logger.error(f"Local genome load failed: {e}")
+                    sys.exit(1)
         
             if not genomes:
                 logger.warning("ℹ️ No genomes found - using local genomes")
@@ -143,7 +153,7 @@ def main():
 
         # Visualization with array handling fix
         try:
-            if len(jsd_scores) > 10:
+            if jsd_scores.size > 0 and len(jsd_scores) > 10:
                 conservator.plot_conservation(jsd_scores, Path("results/cbsv_conservation.html"))
         except Exception as e:
             logger.error(f"Visualization failed: {e}")
@@ -152,8 +162,19 @@ def main():
         target_sequence = str(valid_genomes[0].seq)
         grnas = designer.design(target_sequence, conserved_regions)
         if not grnas:
-            logger.warning("⚠️ Using test gRNA sequence")
-            grnas = [Cas13gRNADesigner.DesignerResult(sequence="GGGACCCAAAGGGACCCAAA", start=0, end=20)]
+            logger.warning("⚠️ Using test gRNA candidate")
+            grnas = [
+                gRNACandidate(
+                    sequence="GGGACCCAAAGGGACCCAAA",
+                    start=0,
+                    end=20,
+                    gc_content=0.5,  # Test value
+                    mfe=-5.0,        # Test value
+                    passes_checks=True,
+                    offtargets=[],
+                    offtarget_score=0
+                )
+            ]
 
         # Results processing
         output_dir = Path("results")
