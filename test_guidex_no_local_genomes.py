@@ -1,4 +1,3 @@
-
 from Bio import AlignIO
 import traceback
 from Bio.SeqRecord import SeqRecord
@@ -15,7 +14,7 @@ import importlib
 sys.path.insert(0, str(Path(__file__).parent))
 importlib.invalidate_caches()
 from guidex.genome_fetcher import GenomeFetcher
-from guidex.conservation import ConservationAnalyzer
+from conservation import ConservationAnalyzer
 from alignment_engine import AlignmentEngine
 from guidex.core import Cas13gRNADesigner
 from guidex.grna.off_target import OffTargetAnalyzer
@@ -27,6 +26,7 @@ from datetime import datetime
 import pandas as pd
 import numpy as np
 import importlib
+import conservation
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)  # Add this line
 
@@ -40,7 +40,6 @@ CBSV_CONSERVATION_PARAMS = {
     'max_gap': 0.7,
     'pseudocount': 10.0
 }
-
 
 def main():
     try:
@@ -76,8 +75,6 @@ def main():
         logger.debug("Initializing CBSV-optimized components...")
         fetcher = GenomeFetcher(api_key=os.getenv("NCBI_API_KEY_2025"))
         aligner = AlignmentEngine(max_threads=8)
-        importlib.reload(sys.modules['guidex.conservation'])
-        from guidex import conservation
         logger.debug(f"Conservation module path: {conservation.__file__}")
         conservator = conservation.ConservationAnalyzer(**CBSV_CONSERVATION_PARAMS)
         designer = Cas13gRNADesigner()
