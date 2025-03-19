@@ -29,6 +29,9 @@ import importlib
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)  # Add this line
 
+logger.debug(f"Current working directory: {os.getcwd()}")
+logger.debug(f"Python path: {sys.path}")
+
 # CBSV-optimized parameters
 CBSV_THRESHOLDS = [0.65, 0.55, 0.45, 0.35]
 CBSV_CONSERVATION_PARAMS = {
@@ -147,8 +150,9 @@ def main():
         fetcher = GenomeFetcher(api_key=os.getenv("NCBI_API_KEY_2025"))
         aligner = AlignmentEngine(max_threads=8)
         importlib.reload(sys.modules['guidex.conservation'])
-        logger.debug(f"Conservation module path: {ConservationAnalyzer.__module__.__file__}")
-        conservator = ConservationAnalyzer(**CBSV_CONSERVATION_PARAMS)
+        from guidex import conservation
+        logger.debug(f"Conservation module path: {conservation.__file__}")
+        conservator = conservation.ConservationAnalyzer(**CBSV_CONSERVATION_PARAMS)
         designer = Cas13gRNADesigner()
         designer.configure(
             gc_range=(0.35, 0.65),
@@ -157,6 +161,11 @@ def main():
         ot_analyzer = OffTargetAnalyzer()
         optimizer = Cas13Optimizer()
 
+        try:
+            importlib.reload(conservation)
+            logger.debug("Successfully reloaded conservation module")
+        except Exception as e:
+            logger.error(f"Module reload failed: {e}")
         # Genome acquisition
         genomes = []
         try:
