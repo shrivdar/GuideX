@@ -13,7 +13,6 @@ import shutil
 import importlib
 sys.path.insert(0, str(Path(__file__).parent))
 importlib.invalidate_caches()
-import warnings
 from guidex.genome_fetcher import GenomeFetcher
 from guidex.conservation import ConservationAnalyzer
 from alignment_engine import AlignmentEngine
@@ -23,12 +22,18 @@ from guidex.grna.optimizer import Cas13Optimizer
 import torch
 import logging
 import json
-import traceback
 from datetime import datetime
 import pandas as pd
 import numpy as np
-logging.basicConfig(level=logging.INFO)
-logger = logging.getLogger(__name__)  # Add this line
+
+# CBSV-optimized parameters
+CBSV_THRESHOLDS = [0.65, 0.55, 0.45, 0.35]
+CBSV_CONSERVATION_PARAMS = {
+    'window_size': 30,
+    'max_gap': 0.7,
+    'pseudocount': 10.0
+}
+
 
 LOCAL_GENOMES = [
     SeqRecord(
@@ -103,15 +108,13 @@ LOCAL_GENOMES = [
     )
 ]
 
-# ... (keep existing imports and LOCAL_GENOMES) ...
 
 def main():
     try:
-        # Initialize debug mode first
+        # Debug and logging initialization
         debug_mode = os.getenv('GUIDEX_DEBUG', 'false').lower() == 'true'
         log_level = logging.DEBUG if debug_mode else logging.INFO
         
-        # Configure logging with detailed debug format
         logging.basicConfig(
             level=log_level,
             format='%(asctime)s - %(name)s - %(levelname)s - %(message)s' if debug_mode else '%(message)s',
@@ -120,15 +123,15 @@ def main():
                 logging.StreamHandler()
             ]
         )
-        logger.info("🚀 Starting GuideX pipeline")
+        logger = logging.getLogger(__name__)
+        logger.info("🚀 Starting CBSV-Optimized GuideX Pipeline")
         
         if debug_mode:
             logger.debug("🐛 DEBUG MODE ACTIVATED")
             logger.debug(f"System version: {sys.version}")
-            logger.debug(f"NumPy version: {np.__version__}")
-            logger.debug(f"PyTorch version: {torch.__version__}")
+            logger.debug(f"NumPy: {np.__version__}, PyTorch: {torch.__version__}")
 
-        # Clean previous runs with verification
+        # Directory cleanup
         for dir_path in ["alignments", "results"]:
             if Path(dir_path).exists():
                 shutil.rmtree(dir_path)
@@ -136,230 +139,143 @@ def main():
         Path("alignments").mkdir(exist_ok=True)
         Path("results").mkdir(exist_ok=True)
 
-        # Component initialization with version checks
-        logger.debug("Initializing pipeline components...")
+        # Component initialization
+        logger.debug("Initializing CBSV-optimized components...")
         fetcher = GenomeFetcher(api_key=os.getenv("NCBI_API_KEY_2025"))
         aligner = AlignmentEngine(max_threads=8)
-        conservator = ConservationAnalyzer(window_size=30)
+        conservator = ConservationAnalyzer(**CBSV_CONSERVATION_PARAMS)
         designer = Cas13gRNADesigner()
-        
-        logger.debug(f"Alignment engine: {aligner.__class__.__name__}")
-        logger.debug(f"Conservation analyzer: {conservator.__class__.__name__}")
+        designer.configure(
+            gc_range=(0.35, 0.65),
+            mfe_threshold=-5.0
+        )
+        ot_analyzer = OffTargetAnalyzer()
+        optimizer = Cas13Optimizer()
 
-        # Genome acquisition with enhanced debugging
+        # Genome acquisition
         genomes = []
         try:
-            logger.info("🕵️ Attempting NCBI fetch...")
+            logger.info("🕵️ Fetching CBSV genomes...")
             genomes = fetcher.fetch_genomes(
-                target="Influenza A virus",
-                gene="HA",
-                genome_type="gene",
-                limit=10
+                target="Cassava brown streak virus",
+                genome_type="genome",
+                limit=12
             )
             
-            if debug_mode:
+            if debug_mode and genomes:
                 logger.debug("NCBI fetch results:")
-                logger.debug(f"Retrieved {len(genomes)} genomes")
-                if genomes:
-                    logger.debug(f"First genome ID: {genomes[0].id}")
-                    logger.debug(f"First 50 bases: {str(genomes[0].seq[:50])}")
+                logger.debug(f"First genome ID: {genomes[0].id}")
+                logger.debug(f"First 50 bases: {str(genomes[0].seq[:50]}")
 
             if not genomes:
                 logger.warning("ℹ️ No genomes found - trying protein database")
                 genomes = fetcher.fetch_genomes(
-                    target="Influenza A virus HA",
+                    target="Cassava brown streak virus",
                     genome_type="protein",
-                    limit=10
+                    limit=12
                 )
 
         except Exception as e:
-            logger.error(f"🔴 NCBI Error: {e}")
-            logger.info("🔄 Falling back to local genomes")
-            genomes = LOCAL_GENOMES
-            if debug_mode:
-                logger.debug("Local genomes used:")
-                for g in genomes[:3]:
-                    logger.debug(f" - {g.id}: {len(g.seq)}bp")
+            logger.error(f"🔴 Genome fetch error: {e}")
+            sys.exit(1)
 
-        # Sequence validation with quality checks
-        valid_genomes = [g for g in genomes if 5000 <= len(g.seq) <= 15000]
+        # Sequence validation
+        valid_genomes = [g for g in genomes if 8000 <= len(g.seq) <= 10000]
         logger.debug(f"Valid genomes after filtering: {len(valid_genomes)}")
         
         if len(valid_genomes) < 2:
-            raise ValueError(f"Only {len(valid_genomes)} valid genomes (need ≥2)")
+            raise ValueError(f"Only {len(valid_genomes)} valid CBSV genomes (need ≥2)")
 
-        # Alignment process with enhanced verification and error containment
-        logger.info("\n🧬 Starting alignment...")
+        # Alignment process
+        logger.info("\n🧬 Starting CBSV alignment...")
         aligned_file = None
         try:
-            # Perform alignment with validation
-            aligned_file = aligner.align(valid_genomes, Path("alignments"))
+            aligned_file = aligner.align(valid_genomes, Path("alignments/cbsv_alignment.fasta"))
             if not aligned_file.exists():
-                raise FileNotFoundError(f"Alignment failed - no output file at {aligned_file}")
+                raise FileNotFoundError(f"Alignment failed at {aligned_file}")
                 
             logger.info(f"🔍 Alignment saved to: {aligned_file}")
             
             if debug_mode:
-                logger.debug("Alignment file structure verification:")
                 try:
-                    from Bio import AlignIO  # Ensure import is available
                     alignment = AlignIO.read(aligned_file, "fasta")
                     logger.debug(f"Alignment contains {len(alignment)} sequences")
                     logger.debug(f"Alignment length: {alignment.get_alignment_length()} bp")
                     
-                    # Sequence quality checks
                     valid_seqs = [seq for seq in alignment if len(seq.seq) == alignment.get_alignment_length()]
                     logger.debug(f"Valid sequences: {len(valid_seqs)}/{len(alignment)}")
                     
-                    # Sample output with sanitization
-                    logger.debug("First 3 sequence headers:")
+                    logger.debug("First 3 headers:")
                     for rec in alignment[:3]:
-                        logger.debug(f"- {rec.id[:50]}")  # Truncate long IDs
+                        logger.debug(f"- {rec.id[:50]}")
 
                 except Exception as e:
-                    logger.error(f"Alignment validation failed: {str(e)}")
-                    if debug_mode:
-                        logger.debug("Alignment file content sample:")
-                        try:
-                            with open(aligned_file) as f:
-                                logger.debug(f"First 2 lines: {f.readline()}{f.readline()}")
-                        except Exception as fe:
-                            logger.debug(f"File read error: {str(fe)}")
+                    logger.error(f"Alignment validation failed: {e}")
 
         except Exception as e:
-            logger.error(f"Alignment failed: {str(e)}")
+            logger.error(f"Alignment failed: {e}")
             if debug_mode:
-                logger.error(f"Alignment error traceback:\n{traceback.format_exc()}")
-            raise RuntimeError("Critical alignment failure") from e
+                logger.error(f"Traceback:\n{traceback.format_exc()}")
+            sys.exit(1)
 
-        # Conservation analysis with robust error handling and numerical stability
-        logger.info("\n🔎 Identifying conserved regions...")
+        # Conservation analysis
+        logger.info("\n🔎 Identifying CBSV conserved regions...")
         jsd_scores = []
-        valid_regions = 0
         conserved_regions = []
-        thresholds = [0.6, 0.5, 0.6, 0.5]  # Safe defaults
-
+        
         try:
-            # Validate and unpack conservation results with type checking
             conservation_result = conservator.calculate_jsd(aligned_file)
             
             if not (isinstance(conservation_result, tuple) and len(conservation_result) == 2):
-                raise ValueError(
-                    f"Invalid conservation result format: {type(conservation_result)}. "
-                    f"Expected tuple of (scores, valid_regions)"
-                )
+                raise ValueError(f"Invalid conservation format: {type(conservation_result)}")
+                
+            jsd_scores, valid_windows = conservation_result
+            jsd_scores = np.nan_to_num(jsd_scores, nan=0.0)
             
-            jsd_scores, valid_regions = conservation_result
-            
+            # Dynamic threshold calculation
+            thresholds = CBSV_THRESHOLDS.copy()
+            try:
+                if len(jsd_scores) > 10:
+                    thresholds[0] = np.percentile(jsd_scores, 85)
+                    thresholds[1] = np.percentile(jsd_scores, 75)
+                    thresholds[2] = np.percentile(jsd_scores, 60)
+            except Exception as e:
+                logger.warning(f"Using default CBSV thresholds: {e}")
+
+            # Region detection
+            conserved_regions = []
+            for threshold in thresholds:
+                regions = [
+                    (pos, min(pos+30, len(jsd_scores)-1))
+                    for pos, score in enumerate(jsd_scores)
+                    if score > threshold
+                ]
+                if regions:
+                    conserved_regions = self._merge_regions(regions)
+                    break
+                    
+            logger.info(f"✅ Found {len(conserved_regions)} CBSV conserved regions")
+
             if debug_mode:
                 logger.debug("Conservation analysis raw results:")
-                logger.debug(f"- Total positions: {len(jsd_scores)}")
-                logger.debug(f"- Reported valid regions: {valid_regions}")
-                logger.debug(f"- Initial NaN count: {np.isnan(jsd_scores).sum()}")
-
-            # Data quality checks
-            if not jsd_scores:
-                raise ValueError("Empty conservation scores array")
-                
-            nan_ratio = np.isnan(jsd_scores).mean()
-            if nan_ratio == 1:
-                raise ValueError("All conservation scores are NaN")
-            elif nan_ratio > 0.5:
-                logger.warning(f"High NaN ratio: {nan_ratio:.1%}")
-
-            # Threshold calculation with safe defaults
-            clean_scores = [s for s in jsd_scores if not np.isnan(s)]
-            try:
-                if clean_scores:
-                    threshold1 = np.nanpercentile(jsd_scores, 90)
-                    threshold2 = np.nanpercentile(jsd_scores, 80)
-                    threshold3 = max(np.nanpercentile(jsd_scores, 10) + 0.2, 0.6)
-                else:
-                    threshold1 = threshold2 = threshold3 = 0.6
-                
-                thresholds = [threshold1, threshold2, threshold3, 0.5]
-                
-                if debug_mode:
-                    logger.debug("Computed Thresholds:")
-                    logger.debug(f"1. {threshold1:.3f} (90th percentile)")
-                    logger.debug(f"2. {threshold2:.3f} (80th percentile)")
-                    logger.debug(f"3. {threshold3:.3f} (10th pct + 0.2)")
-                    logger.debug(f"4. 0.500 (fixed fallback)")
-
-            except Exception as e:
-                logger.error(f"Threshold calculation error: {str(e)}")
-                thresholds = [0.6, 0.5, 0.6, 0.5]
-                if debug_mode:
-                    logger.debug("Using safe default thresholds")
-
-            # Region detection with bounds checking and validation
-            conserved_regions = []
-            for i, threshold in enumerate(thresholds):
-                try:
-                    current_regions = [
-                        (pos, min(pos + 30, len(jsd_scores) - 1))  # Fixed bounds
-                        for pos, s in enumerate(jsd_scores)
-                        if not np.isnan(s) and s > threshold
-                    ]
-                    
-                    if current_regions:
-                        conserved_regions = current_regions
-                        if debug_mode:
-                            logger.debug(f"Threshold {i+1} ({threshold:.3f}) success:")
-                            logger.debug(f"- Regions found: {len(current_regions)}")
-                            if current_regions:
-                                start, end = current_regions[0]
-                                logger.debug(f"- First region: {start}-{end}")
-                                logger.debug(f"- Region scores: {jsd_scores[start]:.3f}-{jsd_scores[end]:.3f}")
-                        break
-                        
-                except Exception as e:
-                    logger.warning(f"Region detection failed at threshold {i}: {str(e)}")
-                    if debug_mode:
-                        logger.debug(f"Failure context:")
-                        logger.debug(f"- Threshold: {threshold}")
-                        logger.debug(f"- JSD scores length: {len(jsd_scores)}")
-                        logger.debug(f"- NaN count: {np.isnan(jsd_scores).sum()}")
-
-            logger.info(f"✅ Found {len(conserved_regions)} conserved regions")
+                logger.debug(f"- JSD scores: {len(jsd_scores)}")
+                logger.debug(f"- Valid windows: {valid_windows}")
+                logger.debug(f"- NaN count: {np.isnan(jsd_scores).sum()}")
 
         except Exception as e:
-            logger.error(f"Conservation analysis failed: {str(e)}")
-            if debug_mode:
-                logger.error(f"Error traceback:\n{traceback.format_exc()}")
-                logger.debug("Alignment file diagnostics:")
-                logger.debug(f"- Path: {aligned_file}")
-                logger.debug(f"- Size: {aligned_file.stat().st_size} bytes" if aligned_file.exists() else "- File missing")
-            conserved_regions = []
+            logger.error(f"Conservation failed: {e}")
+            sys.exit(1)
 
-        # Visualization with enhanced safeguards and error reporting
+        # Visualization and debugging
         try:
-            if jsd_scores and len(jsd_scores) > 10 and not np.all(np.isnan(jsd_scores)):
-                conservator.plot_conservation(
-                    jsd_scores, 
-                    Path("results/conservation.html")
-                )
-                logger.info("📊 Conservation plot generated")
-            else:
-                logger.warning("Skipping visualization - insufficient valid data")
-                if debug_mode:
-                    valid_count = len([s for s in jsd_scores if not np.isnan(s)])
-                    logger.debug(f"Valid data: {valid_count}/{len(jsd_scores)}")
-                    if valid_count > 0:
-                        logger.debug(f"Score range: {np.nanmin(jsd_scores):.3f}-{np.nanmax(jsd_scores):.3f}")
-
+            if jsd_scores and len(jsd_scores) > 10:
+                conservator.plot_conservation(jsd_scores, Path("results/cbsv_conservation.html"))
+                logger.info("📊 CBSV conservation plot generated")
         except Exception as e:
-            logger.error(f"Visualization failed: {str(e)}")
-            if debug_mode:
-                logger.error(f"Failed JSD scores sample:")
-                logger.error(f"{jsd_scores[:10]}")
+            logger.error(f"Visualization failed: {e}")
 
-        # Debug data persistence with validation and error containment
         if debug_mode:
             try:
-                logger.debug("Persisting debug datasets...")
-                
-                # Save numerical data with versioning
                 debug_data = {
                     'metadata': {
                         'timestamp': datetime.now().isoformat(),
@@ -369,134 +285,98 @@ def main():
                     'thresholds': thresholds,
                     'conserved_regions': conserved_regions
                 }
-                
-                np.save("results/debug_data.npy", debug_data)
-                
-                # CSV with data validation
-                debug_df = pd.DataFrame({
-                    'position': range(len(jsd_scores)),
-                    'jsd_score': jsd_scores,
-                    'is_nan': np.isnan(jsd_scores)
-                })
-                debug_df.to_csv("results/conservation_debug.csv", index=False)
-                
-                # Threshold metadata with validation
-                threshold_metadata = {
-                    'calculated_thresholds': [float(t) for t in thresholds],
-                    'final_threshold_used': float(thresholds[0]) if conserved_regions else None,
-                    'conserved_region_count': len(conserved_regions),
-                    'nan_ratio': np.isnan(jsd_scores).mean() if len(jsd_scores) > 0 else 1.0
-                }
-                with open("results/threshold_metadata.json", 'w') as f:
-                    json.dump(threshold_metadata, f, indent=2)
-                
-                logger.debug("Debug data persisted successfully")
-                
+                np.save("results/cbsv_debug.npy", debug_data)
+                logger.debug("Debug data persisted")
             except Exception as e:
-                logger.error(f"Debug data persistence failed: {str(e)}")
-                if debug_mode:
-                    logger.error(f"Data dump error details:\n{traceback.format_exc()}")
+                logger.error(f"Debug data error: {e}")
 
-        # gRNA Design with enhanced feedback
+        # gRNA Design
         grnas = []
         if conserved_regions:
-            logger.info("\n🔬 Designing Cas13 gRNAs...")
-            target_sequence = str(valid_genomes[0].seq)
-            
-            if debug_mode:
-                logger.debug(f"Target sequence length: {len(target_sequence)}")
-                logger.debug(f"First conserved region: {conserved_regions[0][0]}-{conserved_regions[0][1]}")
-                logger.debug(f"Region sequence: {target_sequence[conserved_regions[0][0]:conserved_regions[0][1]]}")
-
-            grnas = designer.design(target_sequence, conserved_regions)
-            
-            if not grnas:
-                logger.warning("⚠️ Designed 0 gRNAs - relaxing constraints")
-                designer.config.mfe_threshold = -1.0
-                designer.config.gc_min = 0.3
+            try:
+                target_sequence = str(valid_genomes[0].seq)
                 grnas = designer.design(target_sequence, conserved_regions)
+                
+                if not grnas:
+                    logger.warning("⚠️ Relaxing gRNA constraints")
+                    designer.config.mfe_threshold = -1.0
+                    grnas = designer.design(target_sequence, conserved_regions)
+                    
+                logger.info(f"🧬 Designed {len(grnas)} gRNAs")
 
-        # Results handling with validation
+            except Exception as e:
+                logger.error(f"gRNA design failed: {e}")
+
+        # Results handling
         output_dir = Path("results")
         if grnas:
-            logger.info(f"\n🎉 Success! Designed {len(grnas)} gRNAs:")
-            for i, grna in enumerate(grnas[:5], 1):
-                logger.info(f"{i}. {grna.sequence} (pos {grna.start}-{grna.end})")
-
-            (output_dir / "grnas.txt").write_text("\n".join(g.sequence for g in grnas))
+            (output_dir / "cbsv_grnas.txt").write_text("\n".join(g.sequence for g in grnas))
             
             # Off-target analysis
-            logger.info("\n🔍 Running off-target analysis...")
-            ot_results = []
+            logger.info("\n🔍 Running CBSV off-target analysis...")
             for grna in grnas:
                 grna.offtargets = ot_analyzer.analyze(grna.sequence)
-                grna.offtarget_score = len(grna.offtargets)
-                ot_results.append({
-                    "sequence": grna.sequence,
-                    "offtarget_count": grna.offtarget_score
-                })
-                
-                if debug_mode and grna.offtarget_score > 0:
-                    logger.debug(f"gRNA {grna.sequence} has {grna.offtarget_score} off-targets")
-                    logger.debug(f"First off-target: {grna.offtargets[0]}")
+                if debug_mode and grna.offtargets:
+                    logger.debug(f"gRNA {grna.sequence} has {len(grna.offtargets)} off-targets")
 
             # Optimization
-            logger.info("\n⚙️ Optimizing gRNAs...")
-            optimized_results = []
             try:
                 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-                logger.info(f"Using compute device: {device}")
-                optimizer = optimizer.to(device)
-                
+                logger.info(f"⚙️ Optimizing on {device}")
+                optimized_results = []
                 for grna in grnas:
                     try:
                         optimized = optimizer.optimize(grna.sequence)
                         optimized_results.append({
                             "original": grna.sequence,
                             "optimized": optimized,
-                            "offtarget_score": grna.offtarget_score
+                            "offtargets": len(grna.offtargets)
                         })
-                        if debug_mode:
-                            logger.debug(f"Optimized {grna.sequence[:8]}... -> {optimized[:8]}...")
                     except Exception as e:
-                        logger.warning(f"Optimization failed for {grna.sequence[:8]}: {str(e)}")
-
+                        logger.warning(f"Optimization failed for {grna.sequence[:8]}: {e}")
                 (output_dir / "optimized_grnas.json").write_text(json.dumps(optimized_results))
-                
             except Exception as e:
-                logger.error(f"Optimization error: {str(e)}")
-                if "CUDA" in str(e):
-                    logger.info("💡 Try running on CPU: export CUDA_VISIBLE_DEVICES=''")
+                logger.error(f"Optimization error: {e}")
 
-        # Final report with system stats
-        logger.info("\n📊 Final Report")
+        # Final report
+        logger.info("\n📊 CBSV Final Report")
         logger.info("▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔")
-        logger.info(f"Conserved regions identified: {len(conserved_regions)}")
-        logger.info(f"gRNAs designed: {len(grnas)}")
+        logger.info(f"Conserved regions: {len(conserved_regions)}")
+        logger.info(f"Valid gRNAs: {len(grnas)}")
         if grnas:
-            logger.info(f"gRNAs with off-targets: {sum(1 for g in grnas if g.offtarget_score > 0)}")
-            logger.info(f"Successfully optimized: {len(optimized_results)}")
+            logger.info(f"gRNAs with off-targets: {sum(1 for g in grnas if g.offtargets)}")
+            logger.info(f"Optimized: {len(optimized_results)}")
         
         if debug_mode:
             import psutil
             logger.debug("\nSystem Resources:")
-            logger.debug(f"Memory usage: {psutil.virtual_memory().percent}%")
-            logger.debug(f"CPU usage: {psutil.cpu_percent()}%")
-            logger.debug(f"Disk usage: {psutil.disk_usage('/').percent}%")
+            logger.debug(f"Memory: {psutil.virtual_memory().percent}%")
+            logger.debug(f"CPU: {psutil.cpu_percent()}%")
 
         logger.info(f"\n📁 Results saved to: {output_dir.absolute()}")
 
     except Exception as e:
         logger.error(f"\n❌ Pipeline Error: {e}")
         if debug_mode:
-            logger.error(f"Full error traceback:\n{traceback.format_exc()}")
-        
-        logger.info("\n🔧 Debugging Tips:")
-        logger.info("1. Check alignment file: muscle -in alignments/INPUT.fasta")
-        logger.info("2. Verify conservation scores: results/js_scores.csv")
-        logger.info("3. Inspect thresholds: results/thresholds.json")
-        
+            logger.error(f"Traceback:\n{traceback.format_exc()}")
+        logger.info("\n🔧 Debug Tips:")
+        logger.info("1. Check alignment: muscle -in alignments/cbsv_alignment.fasta")
+        logger.info("2. Inspect conservation scores: results/cbsv_debug.npy")
         sys.exit(1)
+
+def _merge_regions(regions, gap=10):
+    """Merge adjacent conserved regions"""
+    if not regions:
+        return []
+        
+    merged = [list(regions[0])]
+    for current in regions[1:]:
+        last = merged[-1]
+        if current[0] <= last[1] + gap:
+            last[1] = max(last[1], current[1])
+        else:
+            merged.append(list(current))
+    return [tuple(r) for r in merged]
 
 if __name__ == "__main__":
     main()
