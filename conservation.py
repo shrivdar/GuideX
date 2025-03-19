@@ -3,6 +3,7 @@ from pathlib import Path
 from typing import List, Tuple
 from scipy.spatial.distance import jensenshannon
 from scipy.stats import entropy
+from skbio import DNA, TabularMSA
 from Bio import AlignIO
 import pandas as pd
 import plotly.express as px
@@ -13,12 +14,11 @@ logger = setup_logger(__name__)
 class ConservationAnalyzer:
     """Numerically stable conservation analysis with enhanced error handling"""
     
-    def __init__(self, window_size: int = 30):
+    def __init__(self, window_size: int = 30, max_gap: float = 0.7, pseudocount: float = 10.0):  # FIXED
         self.window_size = window_size
-        self.max_gap = max_gap  # Add this line
-        self.pseudocount = pseudocount  # Add this line
+        self.max_gap = max_gap
+        self.pseudocount = pseudocount
         self.epsilon = 1e-10
-        self.logger = setup_logger(__name__)
 
     def calculate_jsd(self, aligned_file: Path) -> Tuple[List[float], int]:
         """Guaranteed tuple return (scores, valid_window_count)"""
@@ -177,20 +177,20 @@ class ConservationAnalyzer:
 
     def _safe_frequencies(self, nucleotide: str) -> np.ndarray:
         """Robust frequency calculation with enhanced pseudocounts"""
-        counts = np.array([5.0, 5.0, 5.0, 5.0])  # A, C, G, T
+        # Changed from fixed 5.0 to use instance's pseudocount
+        counts = np.array([self.pseudocount] * 4)  # A, C, G, T
         nt_map = {'A':0, 'C':1, 'G':2, 'T':3}
         
         if nucleotide.upper() in nt_map:
-            counts[nt_map[nucleotide.upper()]] += 3.0
+            counts[nt_map[nucleotide.upper()]] += 2.0  # Match calculate_jsd's increment
             
-        total = np.sum(counts) + 1e-12  # Prevent division by zero
-        return np.clip(counts/total, 1e-12, 1.0)  # Numerical stability
-
+        total = np.sum(counts) + 1e-12
+        return np.clip(counts/total, 1e-12, 1.0)
 
     def _is_invalid_column(self, col: np.ndarray) -> bool:
         """Check for uninformative columns"""
-        unique = len(set(col))
-        return (unique < 2) or (np.mean(col == '-') > self.max_gap)
+        # Changed from set() to np.unique for numpy arrays
+        return (len(np.unique(col)) < 2) or (np.mean(col == '-') > self.max_gap)
 
     def _load_alignment(self, path: Path) -> TabularMSA:
         """Load and validate alignment file"""
@@ -228,11 +228,12 @@ class ConservationAnalyzer:
     def _position_frequencies(self, nucleotide: str) -> List[float]:
         """Calculate normalized nucleotide frequencies at a position"""
         valid_nt = {'A', 'C', 'G', 'T'}
+        # Use instance's pseudocount instead of fixed 0.25
         counts = {
-            'A': 0.25,  # Pseudocounts to avoid zero probabilities
-            'C': 0.25,
-            'G': 0.25,
-            'T': 0.25
+            'A': self.pseudocount/40,  # Scaled for compatibility
+            'C': self.pseudocount/40,
+            'G': self.pseudocount/40,
+            'T': self.pseudocount/40
         }
         
         if nucleotide.upper() in valid_nt:
