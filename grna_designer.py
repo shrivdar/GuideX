@@ -103,6 +103,12 @@ class Cas13gRNADesigner:
         self.config = self._load_and_validate_config(config_path)
         self._verify_rnafold()
 
+    def configure(self, gc_range, mfe_threshold):
+        """Update design parameters"""
+        self.config.gc_min = gc_range[0]
+        self.config.gc_max = gc_range[1]
+        self.config.mfe_threshold = mfe_threshold
+
     def design(self, sequence: str, regions: List[Tuple[int, int]]) -> List[gRNACandidate]:
         """Main design pipeline with parallel processing"""
         sequence = sequence.upper()
