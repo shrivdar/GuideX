@@ -1,4 +1,3 @@
-
 from Bio import AlignIO, SeqIO
 import traceback
 from Bio.SeqRecord import SeqRecord
