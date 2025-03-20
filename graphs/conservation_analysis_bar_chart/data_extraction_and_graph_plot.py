@@ -41,35 +41,43 @@ def plot_conservation(conservation: np.ndarray,
                      regions: List[Tuple[int, int]],
                      invalid_regions: List[Tuple[int, int]] = None,
                      window_size: int = 50):
-    """
-    Generate conservation bar chart with sliding window averaging
-    """
-    plt.figure(figsize=(15, 6))
-    
-    # Apply sliding window average
-    window = np.ones(window_size)/window_size
-    smoothed = np.convolve(conservation, window, mode='same')
-    
-    # Plot conservation profile
-    plt.bar(range(len(smoothed)), smoothed, 
-           color='steelblue', width=1, alpha=0.7,
-           label='Conservation Score')
-    
-    # Highlight conserved regions
-    for start, end in regions:
-        plt.axvspan(start, end, color='forestgreen', alpha=0.3, 
-                   label='Conserved Region' if start == regions[0][0] else "")
-    
-    # Mark invalid regions
-    if invalid_regions:
-        for start, end in invalid_regions:
-            plt.axvspan(start, end, color='red', alpha=0.2, 
-                       label='Invalid Region' if start == invalid_regions[0][0] else "")
-    
-    plt.xlabel("Genomic Position", fontsize=12)
-    plt.ylabel("Conservation (%)", fontsize=12)
-    plt.title("CBSV Conservation Analysis", fontsize=16)
-    plt.legend()
-    plt.grid(alpha=0.2)
-    plt.tight_layout()
-    return plt.gcf()
+    with plt.rc_context(POSTER_STYLE):
+        fig, ax = plt.subplots(figsize=(18, 6))
+        
+        # Smoothed conservation
+        window = np.hanning(window_size)
+        smoothed = np.convolve(conservation, window, mode='same') / window.sum()
+        
+        # Main conservation plot
+        ax.fill_between(range(len(smoothed)), smoothed, 
+                       color='#2c7bb6', alpha=0.3, label='Conservation')
+        ax.plot(smoothed, color='#2c7bb6', lw=1.5)
+        
+        # Region highlighting
+        for start, end in regions:
+            ax.axvspan(start, end, color='#2ca25f', alpha=0.2, lw=0)
+            
+        if invalid_regions:
+            for start, end in invalid_regions:
+                ax.axvspan(start, end, color='#d7191c', alpha=0.3, lw=0,
+                          hatch='//', label='Invalid' if start == invalid_regions[0][0] else "")
+        
+        # Formatting
+        ax.set_xlabel("Genomic Position (bp)", labelpad=10)
+        ax.set_ylabel("Conservation (%)", labelpad=10)
+        ax.set_title("CBSV Genome Conservation Analysis", pad=20)
+        
+        # Unified legend
+        handles, labels = ax.get_legend_handles_labels()
+        unique = [(h, l) for i, (h, l) in enumerate(zip(handles, labels)) if l not in labels[:i]]
+        ax.legend(*zip(*unique), loc='upper right', frameon=True)
+        
+        # Annotation panel
+        ax.text(0.01, 0.95, 'A', transform=ax.transAxes,
+               fontsize=24, weight='bold', va='top')
+        ax.text(0.05, 0.95, f"Conserved Regions: {len(regions)}\nWindow Size: {window_size}bp",
+               transform=ax.transAxes, va='top', ha='left',
+               bbox=dict(facecolor='white', alpha=0.8))
+        
+        plt.tight_layout()
+        return fig
