@@ -3,7 +3,7 @@ from Bio.Blast import NCBIWWW, NCBIXML
 import pandas as pd
 import numpy as np
 
-Entrez.email = "your.email@example.com"  # NCBI requirement
+Entrez.email = "darsh.shri123@gmail.com"  # NCBI requirement
 
 CBSV_ISOLATES = [
     "NC_012698.2", "GU563327.1", "FN434436.1", "MK955888.1",
