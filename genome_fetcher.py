@@ -53,7 +53,7 @@ class GenomeFetcher:
             if not version_match:
                 raise RuntimeError(f"Can't parse datasets version: {version_str}")
                 
-            major_version = int(version_match.group(1).split('.')[0]
+            major_version = int(version_match.group(1).split('.')[0])
             
             if major_version < 16:
                 raise RuntimeError(
