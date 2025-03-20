@@ -36,9 +36,9 @@ class GenomeFetcher:
         self.session.mount("https://", HTTPAdapter(max_retries=self.RETRY_STRATEGY))
         self._configure_cli()
         self.cache_dir = Path("~/.guidex/genome_cache").expanduser()
-            
+
     def _verify_cli(self):
-        """Validate CLI v16+ installation"""
+        """Verify datasets CLI version with improved compatibility"""
         try:
             result = subprocess.run(
                 ["datasets", "--version"],
@@ -46,12 +46,28 @@ class GenomeFetcher:
                 text=True,
                 check=True
             )
-            if "16." not in result.stdout:
-                raise RuntimeError("Requires datasets CLI v16+")
-        except (subprocess.CalledProcessError, FileNotFoundError):
+            version_str = result.stdout.strip().lower()
+            
+            # Handle different version formats: "16.2.1" or "v16.2.1-2023"
+            version_match = re.search(r'(\d+\.\d+\.\d+)', version_str)
+            if not version_match:
+                raise RuntimeError(f"Can't parse datasets version: {version_str}")
+                
+            major_version = int(version_match.group(1).split('.')[0]
+            
+            if major_version < 16:
+                raise RuntimeError(
+                    f"Requires datasets CLI v16+. Found v{major_version}. Update with:\n"
+                    f"pip install 'ncbi-datasets-cli>=16.0.0'"
+                )
+                
+        except FileNotFoundError:
             raise RuntimeError(
-                "NCBI datasets CLI not found. Install with: "
-                "brew install ncbi-datasets"
+                "NCBI datasets CLI not found. Install with:\n"
+                "pip install 'ncbi-datasets-cli>=16.0.0'"
+            )
+        except subprocess.CalledProcessError as e:
+            raise RuntimeError(f"Datasets version check failed: {e.stderr}")
             )
     def _configure_cli(self):
         """Configure CLI authentication"""
