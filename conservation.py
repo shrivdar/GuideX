@@ -29,68 +29,55 @@ class ConservationAnalyzer:
         self.pseudocount = pseudocount
         self.epsilon = 1e-10
 
-    def calculate_jsd(self, aligned_file: Path) -> Tuple[List[float], int]:
-        """Guaranteed tuple return (scores, valid_window_count)"""
-        try:
-            alignment = AlignIO.read(aligned_file, "fasta")
-            if len(alignment) < 2:
-                return ([], 0)  # Explicit tuple return
-
-            scores = []
-            valid_windows = 0
-            aln_length = alignment.get_alignment_length()
+    def calculate_jsd(self, alignment_file):
+        """Calculate Jensen-Shannon Divergence scores for each window"""
+        align = AlignIO.read(alignment_file, "fasta")
+        alignment_length = align.get_alignment_length()
+        jsd_scores = []
+        valid_windows = []
+        
+        for i in range(0, alignment_length, self.window_size):
+            window_start = i
+            window_end = min(i + self.window_size, alignment_length)
+            window = align[:, window_start:window_end]
+            window_length = window_end - window_start
             
-            for i in range(0, aln_length, self.window_size):
-                window_scores = []
-                window_end = min(i + self.window_size, aln_length)
+            # Calculate gap percentage
+            gap_count = sum(sum(1 for base in record.seq if base == '-') for record in window)
+            total_bases = len(window) * window_length
+            gap_percentage = gap_count / total_bases if total_bases > 0 else 1.0
+            
+            if gap_percentage > self.max_gap:
+                valid_windows.append(False)
+                jsd_scores.append(0.0)
+                continue
                 
-                for j in range(i, window_end):
-                    col = [str(rec.seq[j]).upper() for rec in alignment]
-                    gap_ratio = col.count('-') / len(col)
-                    
-                    if gap_ratio > self.max_gap:
-                        continue
-
-                    # Enhanced frequency calculation with increased pseudocounts
-                    counts = {
-                        'A': self.pseudocount, 
-                        'C': self.pseudocount,
-                        'G': self.pseudocount,
-                        'T': self.pseudocount
-                    }
-                    for nt in col:
-                        if nt in counts:
-                            counts[nt] += 2.0  # Higher observed count
-
-                    total = sum(counts.values()) + 1e-12
-                    freqs = [v/total for v in counts.values()]
-                    
-                    # Numerically stable JSD calculation
-                    jsd_sum = 0.0
-                    pairs = 0
-                    for k in range(len(freqs)):
-                        for l in range(k+1, len(freqs)):
-                            p = np.clip(freqs[k], 1e-12, 1.0)
-                            q = np.clip(freqs[l], 1e-12, 1.0)
-                            jsd = self._safe_jsd(p, q)
-                            if not np.isnan(jsd):
-                                jsd_sum += jsd
-                                pairs += 1
-
-                    if pairs > 0:
-                        window_scores.append(jsd_sum / pairs)
-
-                if window_scores:
-                    window_avg = np.nanmean(window_scores)
-                    if not np.isnan(window_avg):
-                        scores.append(float(window_avg))
-                        valid_windows += 1
-
-            return (scores, valid_windows)  # Explicit tuple
-
-        except Exception as e:
-            logger.error(f"Conservation analysis failed: {str(e)}")
-            return ([], 0)  # Maintain tuple structure
+            # Calculate frequency matrix
+            freqs = np.zeros((4, window_length))
+            for col in range(window_length):
+                counts = {'A': self.pseudocount, 'C': self.pseudocount, 'G': self.pseudocount, 'T': self.pseudocount}
+                for record in window:
+                    base = record.seq[col].upper()
+                    if base in counts:
+                        counts[base] += 1
+                    # else:  # Handle gaps and unknowns by ignoring
+                
+                total = sum(counts.values())
+                freqs[0, col] = counts['A'] / total
+                freqs[1, col] = counts['C'] / total
+                freqs[2, col] = counts['G'] / total
+                freqs[3, col] = counts['T'] / total
+            
+            # Calculate JSD
+            mean_freq = np.mean(freqs, axis=1)
+            jsd = 0
+            for col in range(window_length):
+                col_freq = freqs[:, col]
+                jsd += 0.5 * (entropy(col_freq) + entropy(mean_freq) - entropy(0.5*(col_freq + mean_freq)))
+            
+            jsd_scores.append(jsd / window_length)
+            valid_windows.append(True)
+        return np.array(jsd_scores), valid_windows
 
     def _safe_jsd(self, p: List[float], q: List[float]) -> float:
         """Numerically stable JSD implementation"""
