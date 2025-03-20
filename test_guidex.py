@@ -323,21 +323,17 @@ def main():
             logger.error(f"Traceback:\n{traceback.format_exc()}")
         sys.exit(1)
 
+# Update _merge_regions() in test_guidex.py
 def _merge_regions(regions: List[Tuple[int, int]], gap: int = 30) -> List[Tuple[int, int]]:
-    """Merge adjacent conserved regions with nucleotide gap tolerance"""
-    if not regions:
-        return []
-    
-    regions = sorted(regions, key=lambda x: x[0])
-    merged = [list(regions[0])]
-    
-    for current in regions[1:]:
-        last = merged[-1]
-        if current[0] <= last[1] + gap:
-            last[1] = max(last[1], current[1])
-        else:
-            merged.append(list(current))
-    return [tuple(r) for r in merged]
+    """Merge regions but enforce max size for Cas13 targets"""
+    merged = []
+    for start, end in sorted(regions):
+        # Split large regions into 30bp windows
+        while start < end:
+            current_end = min(start + 30, end)
+            merged.append((start, current_end))
+            start = current_end
+    return merged
 
 if __name__ == "__main__":
     main()
