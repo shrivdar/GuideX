@@ -19,6 +19,7 @@ import json
 from datetime import datetime
 import pandas as pd
 import numpy as np
+from scipy import stats
 import importlib
 import conservation
 logging.basicConfig(level=logging.INFO)
@@ -129,7 +130,14 @@ def main():
         logger.info("\n🔎 Identifying CBSV conserved regions...")
         jsd_scores, valid_windows = conservator.calculate_jsd(aligned_file)
         jsd_scores = np.nan_to_num(jsd_scores, nan=0.0)
-        
+
+        logger.debug(f"JSD scores shape: {jsd_scores.shape}")
+        logger.debug(f"JSD scores max: {np.max(jsd_scores)}")
+        logger.debug(f"JSD scores min: {np.min(jsd_scores)}")
+        logger.debug(f"JSD scores mean: {np.mean(jsd_scores)}")
+        logger.debug(f"JSD scores median: {np.median(jsd_scores)}")
+        logger.debug(f"JSD scores std: {np.std(jsd_scores)}")
+
         # Dynamic threshold calculation with improved safeguards
         thresholds = [
             max(np.nanpercentile(jsd_scores, 85), 0.4),
@@ -138,10 +146,13 @@ def main():
             0.15  # Absolute minimum
         ]
 
+        logger.debug(f"Calculated thresholds: {thresholds}")
+        
         # Region detection with window-to-position conversion
         window_size = CBSV_CONSERVATION_PARAMS['window_size']
         conserved_regions = []
         for threshold in thresholds:
+            logger.debug(f"Checking threshold: {threshold}")
             regions = []
             for window_pos, score in enumerate(jsd_scores):
                 if score > threshold:
@@ -151,7 +162,10 @@ def main():
             
             if regions:
                 conserved_regions = _merge_regions(regions, gap=window_size)  # 30 nt gap
+                logger.debug(f"Found {len(conserved_regions)} regions with threshold {threshold}")
                 break
+            else:
+                logger.debug(f"No regions found with threshold {threshold}")
                 
         # Fallback mechanism with proper sequence coordinates
         if not conserved_regions:
