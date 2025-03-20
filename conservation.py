@@ -110,7 +110,7 @@ class ConservationAnalyzer:
                 x='Position',
                 y='Conservation',
                 title=f'Conservation Profile (Window Size: {self.window_size}bp)',
-                labels={'Conservation': 'Jensen-Shannon Distance'},
+                labels={'Conservation': 'Jensen-Shannon Divergence'}
                 template='plotly_white'
             )
             
