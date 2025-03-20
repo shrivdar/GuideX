@@ -34,9 +34,9 @@ class OffTargetAnalyzer:
         window_size: int = 28,
         batch_size: int = 1000000
     ):
-        self.reference_genome = reference_genome
+        self.reference_genome = Path(reference_genome)
+        self.output_dir = Path(output_dir)
         self.max_mismatches = max_mismatches
-        self.output_dir = output_dir
         self.window_size = window_size
         self.batch_size = batch_size
 
