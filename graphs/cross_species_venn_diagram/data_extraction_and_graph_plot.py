@@ -35,22 +35,46 @@ def calculate_species_overlaps(alignment_path: str,
 
 def plot_venn_diagram(species_sets: Dict[str, Set[int]], 
                      primary_species: List[str] = None):
-    """
-    Generate Venn diagram for conserved region overlap
-    """
-    if not primary_species:
-        primary_species = list(species_sets.keys())[:3]  # Default to first 3 species
+    with plt.rc_context(POSTER_STYLE):
+        fig, ax = plt.subplots(figsize=(8, 8))
         
-    if len(primary_species) == 2:
-        venn = venn2([species_sets[s] for s in primary_species],
-                    set_labels=primary_species)
-    elif len(primary_species) == 3:
-        venn = venn3([species_sets[s] for s in primary_species],
-                    set_labels=primary_species)
-    else:
-        raise ValueError("Venn diagram supports 2-3 species comparison")
-    
-    plt.title("Cross-Species Conservation Overlap", fontsize=14)
-    for text in venn.subset_labels:
-        if text: text.set_fontsize(12)
-    return plt.gcf()
+        # Color scheme matching conservation plot
+        colors = ['#2c7bb6', '#fdae61', '#d7191c']
+        alpha = 0.4
+        
+        if len(primary_species) == 2:
+            venn = venn2([species_sets[s] for s in primary_species],
+                        set_labels=primary_species,
+                        set_colors=colors[:2], alpha=alpha)
+        elif len(primary_species) == 3:
+            venn = venn3([species_sets[s] for s in primary_species],
+                        set_labels=primary_species,
+                        set_colors=colors, alpha=alpha)
+            
+        # Style adjustments
+        for text in venn.subset_labels:
+            if text: 
+                text.set_fontsize(14)
+                text.set_fontweight('bold')
+                
+        for label in venn.set_labels:
+            if label: 
+                label.set_fontsize(16)
+                label.set_fontweight('semibold')
+                
+        # Panel label
+        ax.text(-0.1, 0.95, 'B', transform=ax.transAxes,
+               fontsize=24, weight='bold', va='top')
+        
+        # Annotation box
+        total_regions = sum(len(s) for s in species_sets.values())
+        annotation_text = (
+            f"Total Conserved Regions: {total_regions:,}\n"
+            f"Species: {', '.join(primary_species)}"
+        )
+        ax.text(0.95, 0.05, annotation_text,
+               transform=ax.transAxes, ha='right', va='bottom',
+               bbox=dict(facecolor='white', alpha=0.8))
+        
+        plt.title("Cross-Species Conservation Overlap", pad=20)
+        return fig
