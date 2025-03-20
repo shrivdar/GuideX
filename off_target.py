@@ -44,6 +44,33 @@ class OffTargetAnalyzer:
         self.genome = self._load_genome()
         self.output_dir.mkdir(parents=True, exist_ok=True)
 
+    def _find_offtargets(self, spacer: str) -> List[dict]:
+        """Find off-target matches in reference genome"""
+        spacer_seq = Seq(spacer)
+        spacer_len = len(spacer_seq)
+        targets = []
+        
+        # Load reference genome
+        for record in SeqIO.parse(self.reference_genome, "fasta"):
+            seq = str(record.seq).upper()
+            
+            # Slide window through genome
+            for i in range(len(seq) - spacer_len + 1):
+                window = seq[i:i+spacer_len]
+                mismatches = sum(1 for a, b in zip(spacer_seq, window) if a != b)
+                
+                if mismatches <= 3:  # Allow up to 3 mismatches
+                    targets.append({
+                        "chrom": record.id,
+                        "start": i,
+                        "end": i + spacer_len,
+                        "sequence": window,
+                        "mismatches": mismatches,
+                        "strand": "+"
+                    })
+        
+        return sorted(targets, key=lambda x: x["mismatches"])
+
     def analyze(self, spacer: str) -> List[dict]:
         """Analyze off-targets with robust path handling"""
         targets = self._find_offtargets(spacer)
