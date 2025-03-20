@@ -69,6 +69,7 @@ class GenomeFetcher:
         except subprocess.CalledProcessError as e:
             raise RuntimeError(f"Datasets version check failed: {e.stderr}")
             )
+
     def _configure_cli(self):
         """Configure CLI authentication"""
         if self.api_key:
