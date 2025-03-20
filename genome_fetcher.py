@@ -48,12 +48,12 @@ class GenomeFetcher:
             )
             version_str = result.stdout.strip().lower()
             
-            # Handle different version formats: "16.2.1" or "v16.2.1-2023"
+            # Handle different version formats
             version_match = re.search(r'(\d+\.\d+\.\d+)', version_str)
             if not version_match:
                 raise RuntimeError(f"Can't parse datasets version: {version_str}")
                 
-            major_version = int(version_match.group(1).split('.')[0])
+            major_version = int(version_match.group(1).split('.')[0])  # FIXED LINE
             
             if major_version < 16:
                 raise RuntimeError(
@@ -68,8 +68,7 @@ class GenomeFetcher:
             )
         except subprocess.CalledProcessError as e:
             raise RuntimeError(f"Datasets version check failed: {e.stderr}")
-            )
-
+                
     def _configure_cli(self):
         """Configure CLI authentication"""
         if self.api_key:
