@@ -1,3 +1,4 @@
+
 from Bio import AlignIO, SeqIO
 import traceback
 from Bio.SeqRecord import SeqRecord
@@ -168,6 +169,7 @@ def main():
                     jsd_scores, 
                     Path("results/cbsv_conservation.html"),
                     genome_length=len(valid_genomes[0].seq)
+                )  # <-- Added this closing parenthesis
         except Exception as e:
             logger.error(f"Visualization failed: {e}")
 
